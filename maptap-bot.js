@@ -132,23 +132,17 @@ function buildAnnouncement(dateStr) {
       : '_No data yet_'
   });
 
-  embed.addFields({
-    name: '💎 Top 3 Single-Day Scores (all time)',
-    value: top3.length
-      ? top3.map((r, i) =>
-          `${MEDALS[i]} **${r.username}** — ${r.score.toLocaleString()} pts on ${formatDate(r.date_str)}`
-        ).join('\n')
-      : '_No data yet_'
-  });
-
   const SHAME = ['💀', '😬', '🤡'];
+  const top3Lines = top3.length
+    ? top3.map((r, i) => `${MEDALS[i]} **${r.username}** — ${r.score.toLocaleString()} pts on ${formatDate(r.date_str)}`).join('\n')
+    : '_No data yet_';
+  const bot3Lines = bottom3.length
+    ? bottom3.map((r, i) => `${SHAME[i]} **${r.username}** — ${r.score.toLocaleString()} pts on ${formatDate(r.date_str)}`).join('\n')
+    : '_No data yet_';
+
   embed.addFields({
-    name: '🗑️ Bottom 3 Single-Day Scores (all time)',
-    value: bottom3.length
-      ? bottom3.map((r, i) =>
-          `${SHAME[i]} **${r.username}** — ${r.score.toLocaleString()} pts on ${formatDate(r.date_str)}`
-        ).join('\n')
-      : '_No data yet_'
+    name: '💎 Best & Worst Single-Day Scores',
+    value: `**Top 3**\n${top3Lines}\n\n**Bottom 3**\n${bot3Lines}`
   });
 
   return embed;
