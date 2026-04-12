@@ -1,0 +1,711 @@
+{
+  "scores": [
+    {
+      "user_id": "400023098499268618",
+      "username": "barmeloxanthony17",
+      "score": 554,
+      "date_str": "2026-04-02",
+      "recorded_at": "2026-04-02T23:46:10.474Z"
+    },
+    {
+      "user_id": "175759536274014208",
+      "username": "jackrzu",
+      "score": 588,
+      "date_str": "2026-04-02",
+      "recorded_at": "2026-04-03T00:14:55.376Z"
+    },
+    {
+      "user_id": "242014522393624578",
+      "username": "krypt0nkrusader",
+      "score": 911,
+      "date_str": "2026-04-02",
+      "recorded_at": "2026-04-03T00:19:01.403Z"
+    },
+    {
+      "user_id": "175759734996074497",
+      "username": "pancake_guys",
+      "score": 540,
+      "date_str": "2026-04-02",
+      "recorded_at": "2026-04-03T00:26:17.334Z"
+    },
+    {
+      "user_id": "176835137789493249",
+      "username": "phantomjellybean",
+      "score": 846,
+      "date_str": "2026-04-02",
+      "recorded_at": "2026-04-03T00:36:07.898Z"
+    },
+    {
+      "user_id": "126154878685806592",
+      "username": "shamuraii",
+      "score": 909,
+      "date_str": "2026-04-02",
+      "recorded_at": "2026-04-03T01:15:03.940Z"
+    },
+    {
+      "user_id": "177638660504551424",
+      "username": "luluow",
+      "score": 883,
+      "date_str": "2026-04-02",
+      "recorded_at": "2026-04-03T01:29:09.567Z"
+    },
+    {
+      "user_id": "137596191591366657",
+      "username": "treeelf",
+      "score": 702,
+      "date_str": "2026-04-02",
+      "recorded_at": "2026-04-03T03:37:36.935Z"
+    },
+    {
+      "user_id": "306042421500968960",
+      "username": "scion.ara",
+      "score": 798,
+      "date_str": "2026-04-02",
+      "recorded_at": "2026-04-03T03:44:33.151Z"
+    },
+    {
+      "user_id": "177528463710748672",
+      "username": "erratickiwi",
+      "score": 934,
+      "date_str": "2026-04-03",
+      "recorded_at": "2026-04-03T14:27:32.654Z"
+    },
+    {
+      "user_id": "176835137789493249",
+      "username": "phantomjellybean",
+      "score": 917,
+      "date_str": "2026-04-03",
+      "recorded_at": "2026-04-03T14:39:03.939Z"
+    },
+    {
+      "user_id": "175759536274014208",
+      "username": "jackrzu",
+      "score": 919,
+      "date_str": "2026-04-03",
+      "recorded_at": "2026-04-03T15:02:08.678Z"
+    },
+    {
+      "user_id": "242014522393624578",
+      "username": "krypt0nkrusader",
+      "score": 932,
+      "date_str": "2026-04-03",
+      "recorded_at": "2026-04-03T15:36:57.494Z"
+    },
+    {
+      "user_id": "400023098499268618",
+      "username": "barmeloxanthony17",
+      "score": 936,
+      "date_str": "2026-04-03",
+      "recorded_at": "2026-04-03T15:41:13.247Z"
+    },
+    {
+      "user_id": "449399625389047829",
+      "username": "rustyshackleford_dota",
+      "score": 936,
+      "date_str": "2026-04-03",
+      "recorded_at": "2026-04-03T15:44:11.767Z"
+    },
+    {
+      "user_id": "177638660504551424",
+      "username": "luluow",
+      "score": 973,
+      "date_str": "2026-04-03",
+      "recorded_at": "2026-04-03T15:54:54.099Z"
+    },
+    {
+      "user_id": "175759536274014208",
+      "username": "jackrzu",
+      "score": 630,
+      "date_str": "2026-04-04",
+      "recorded_at": "2026-04-04T12:28:33.127Z"
+    },
+    {
+      "user_id": "242014522393624578",
+      "username": "krypt0nkrusader",
+      "score": 735,
+      "date_str": "2026-04-04",
+      "recorded_at": "2026-04-04T12:33:10.674Z"
+    },
+    {
+      "user_id": "449399625389047829",
+      "username": "rustyshackleford_dota",
+      "score": 736,
+      "date_str": "2026-04-04",
+      "recorded_at": "2026-04-04T14:13:58.822Z"
+    },
+    {
+      "user_id": "177638660504551424",
+      "username": "luluow",
+      "score": 761,
+      "date_str": "2026-04-04",
+      "recorded_at": "2026-04-04T16:22:03.144Z"
+    },
+    {
+      "user_id": "177528463710748672",
+      "username": "erratickiwi",
+      "score": 802,
+      "date_str": "2026-04-04",
+      "recorded_at": "2026-04-04T16:46:36.419Z"
+    },
+    {
+      "user_id": "151875328124387330",
+      "username": "red40warrior",
+      "score": 805,
+      "date_str": "2026-04-04",
+      "recorded_at": "2026-04-04T16:52:21.990Z"
+    },
+    {
+      "user_id": "400023098499268618",
+      "username": "barmeloxanthony17",
+      "score": 657,
+      "date_str": "2026-04-04",
+      "recorded_at": "2026-04-04T18:51:44.241Z"
+    },
+    {
+      "user_id": "137596191591366657",
+      "username": "treeelf",
+      "score": 931,
+      "date_str": "2026-04-04",
+      "recorded_at": "2026-04-05T01:27:51.725Z"
+    },
+    {
+      "user_id": "176835137789493249",
+      "username": "phantomjellybean",
+      "score": 828,
+      "date_str": "2026-04-05",
+      "recorded_at": "2026-04-05T12:27:26.519Z"
+    },
+    {
+      "user_id": "177528463710748672",
+      "username": "erratickiwi",
+      "score": 800,
+      "date_str": "2026-04-05",
+      "recorded_at": "2026-04-05T13:26:38.770Z"
+    },
+    {
+      "user_id": "151875328124387330",
+      "username": "red40warrior",
+      "score": 806,
+      "date_str": "2026-04-05",
+      "recorded_at": "2026-04-05T13:30:33.641Z"
+    },
+    {
+      "user_id": "242014522393624578",
+      "username": "krypt0nkrusader",
+      "score": 729,
+      "date_str": "2026-04-05",
+      "recorded_at": "2026-04-05T15:11:47.631Z"
+    },
+    {
+      "user_id": "215273003888541696",
+      "username": "djimmy23",
+      "score": 732,
+      "date_str": "2026-04-05",
+      "recorded_at": "2026-04-05T15:12:05.539Z"
+    },
+    {
+      "user_id": "449399625389047829",
+      "username": "rustyshackleford_dota",
+      "score": 728,
+      "date_str": "2026-04-05",
+      "recorded_at": "2026-04-05T16:29:41.771Z"
+    },
+    {
+      "user_id": "177638660504551424",
+      "username": "luluow",
+      "score": 857,
+      "date_str": "2026-04-05",
+      "recorded_at": "2026-04-05T16:59:41.674Z"
+    },
+    {
+      "user_id": "400023098499268618",
+      "username": "barmeloxanthony17",
+      "score": 902,
+      "date_str": "2026-04-05",
+      "recorded_at": "2026-04-05T17:15:58.460Z"
+    },
+    {
+      "user_id": "175759536274014208",
+      "username": "jackrzu",
+      "score": 757,
+      "date_str": "2026-04-05",
+      "recorded_at": "2026-04-05T23:39:44.790Z"
+    },
+    {
+      "user_id": "142598994479022081",
+      "username": "lickythecow",
+      "score": 801,
+      "date_str": "2026-04-05",
+      "recorded_at": "2026-04-05T23:45:20.294Z"
+    },
+    {
+      "user_id": "177528463710748672",
+      "username": "erratickiwi",
+      "score": 960,
+      "date_str": "2026-04-06",
+      "recorded_at": "2026-04-06T11:15:26.615Z"
+    },
+    {
+      "user_id": "449399625389047829",
+      "username": "rustyshackleford_dota",
+      "score": 859,
+      "date_str": "2026-04-06",
+      "recorded_at": "2026-04-06T12:18:05.120Z"
+    },
+    {
+      "user_id": "242014522393624578",
+      "username": "krypt0nkrusader",
+      "score": 934,
+      "date_str": "2026-04-06",
+      "recorded_at": "2026-04-06T13:06:20.244Z"
+    },
+    {
+      "user_id": "400023098499268618",
+      "username": "barmeloxanthony17",
+      "score": 857,
+      "date_str": "2026-04-06",
+      "recorded_at": "2026-04-06T13:09:12.578Z"
+    },
+    {
+      "user_id": "175759536274014208",
+      "username": "jackrzu",
+      "score": 895,
+      "date_str": "2026-04-06",
+      "recorded_at": "2026-04-06T13:27:44.390Z"
+    },
+    {
+      "user_id": "176835137789493249",
+      "username": "phantomjellybean",
+      "score": 913,
+      "date_str": "2026-04-06",
+      "recorded_at": "2026-04-06T13:35:10.976Z"
+    },
+    {
+      "user_id": "177638660504551424",
+      "username": "luluow",
+      "score": 937,
+      "date_str": "2026-04-06",
+      "recorded_at": "2026-04-06T15:01:45.770Z"
+    },
+    {
+      "user_id": "306042421500968960",
+      "username": "scion.ara",
+      "score": 884,
+      "date_str": "2026-04-06",
+      "recorded_at": "2026-04-06T18:37:08.063Z"
+    },
+    {
+      "user_id": "151875328124387330",
+      "username": "red40warrior",
+      "score": 914,
+      "date_str": "2026-04-06",
+      "recorded_at": "2026-04-06T19:58:04.025Z"
+    },
+    {
+      "user_id": "674481209132318723",
+      "username": "kflan13",
+      "score": 811,
+      "date_str": "2026-04-06",
+      "recorded_at": "2026-04-06T20:32:53.261Z"
+    },
+    {
+      "user_id": "449399625389047829",
+      "username": "rustyshackleford_dota",
+      "score": 827,
+      "date_str": "2026-04-07",
+      "recorded_at": "2026-04-07T13:38:20.524Z"
+    },
+    {
+      "user_id": "177528463710748672",
+      "username": "erratickiwi",
+      "score": 886,
+      "date_str": "2026-04-07",
+      "recorded_at": "2026-04-07T13:39:52.194Z"
+    },
+    {
+      "user_id": "242014522393624578",
+      "username": "krypt0nkrusader",
+      "score": 952,
+      "date_str": "2026-04-07",
+      "recorded_at": "2026-04-07T13:41:59.556Z"
+    },
+    {
+      "user_id": "175759536274014208",
+      "username": "jackrzu",
+      "score": 815,
+      "date_str": "2026-04-07",
+      "recorded_at": "2026-04-07T14:40:31.270Z"
+    },
+    {
+      "user_id": "151875328124387330",
+      "username": "red40warrior",
+      "score": 885,
+      "date_str": "2026-04-07",
+      "recorded_at": "2026-04-07T19:46:42.880Z"
+    },
+    {
+      "user_id": "137596191591366657",
+      "username": "treeelf",
+      "score": 742,
+      "date_str": "2026-04-07",
+      "recorded_at": "2026-04-07T19:55:12.588Z"
+    },
+    {
+      "user_id": "242014522393624578",
+      "username": "krypt0nkrusader",
+      "score": 960,
+      "date_str": "2026-04-08",
+      "recorded_at": "2026-04-08T12:18:51.717Z"
+    },
+    {
+      "user_id": "176835137789493249",
+      "username": "phantomjellybean",
+      "score": 911,
+      "date_str": "2026-04-08",
+      "recorded_at": "2026-04-08T12:23:01.988Z"
+    },
+    {
+      "user_id": "449399625389047829",
+      "username": "rustyshackleford_dota",
+      "score": 971,
+      "date_str": "2026-04-08",
+      "recorded_at": "2026-04-08T12:27:22.072Z"
+    },
+    {
+      "user_id": "175759536274014208",
+      "username": "jackrzu",
+      "score": 903,
+      "date_str": "2026-04-08",
+      "recorded_at": "2026-04-08T15:26:34.558Z"
+    },
+    {
+      "user_id": "177528463710748672",
+      "username": "erratickiwi",
+      "score": 929,
+      "date_str": "2026-04-08",
+      "recorded_at": "2026-04-08T15:45:30.575Z"
+    },
+    {
+      "user_id": "177638660504551424",
+      "username": "luluow",
+      "score": 959,
+      "date_str": "2026-04-08",
+      "recorded_at": "2026-04-08T16:11:03.687Z"
+    },
+    {
+      "user_id": "151875328124387330",
+      "username": "red40warrior",
+      "score": 950,
+      "date_str": "2026-04-08",
+      "recorded_at": "2026-04-08T16:46:12.827Z"
+    },
+    {
+      "user_id": "400023098499268618",
+      "username": "barmeloxanthony17",
+      "score": 945,
+      "date_str": "2026-04-08",
+      "recorded_at": "2026-04-08T17:21:27.885Z"
+    },
+    {
+      "user_id": "306042421500968960",
+      "username": "scion.ara",
+      "score": 956,
+      "date_str": "2026-04-08",
+      "recorded_at": "2026-04-08T17:35:11.394Z"
+    },
+    {
+      "user_id": "674481209132318723",
+      "username": "kflan13",
+      "score": 935,
+      "date_str": "2026-04-08",
+      "recorded_at": "2026-04-08T18:23:37.640Z"
+    },
+    {
+      "user_id": "215273003888541696",
+      "username": "djimmy23",
+      "score": 908,
+      "date_str": "2026-04-08",
+      "recorded_at": "2026-04-08T21:11:55.116Z"
+    },
+    {
+      "user_id": "176835137789493249",
+      "username": "phantomjellybean",
+      "score": 792,
+      "date_str": "2026-04-09",
+      "recorded_at": "2026-04-09T10:56:38.599Z"
+    },
+    {
+      "user_id": "242014522393624578",
+      "username": "krypt0nkrusader",
+      "score": 897,
+      "date_str": "2026-04-09",
+      "recorded_at": "2026-04-09T13:02:11.976Z"
+    },
+    {
+      "user_id": "449399625389047829",
+      "username": "rustyshackleford_dota",
+      "score": 832,
+      "date_str": "2026-04-09",
+      "recorded_at": "2026-04-09T13:08:06.330Z"
+    },
+    {
+      "user_id": "177528463710748672",
+      "username": "erratickiwi",
+      "score": 714,
+      "date_str": "2026-04-09",
+      "recorded_at": "2026-04-09T13:22:24.546Z"
+    },
+    {
+      "user_id": "151875328124387330",
+      "username": "red40warrior",
+      "score": 887,
+      "date_str": "2026-04-09",
+      "recorded_at": "2026-04-09T13:57:53.592Z"
+    },
+    {
+      "user_id": "175759536274014208",
+      "username": "jackrzu",
+      "score": 709,
+      "date_str": "2026-04-09",
+      "recorded_at": "2026-04-09T14:38:58.389Z"
+    },
+    {
+      "user_id": "177638660504551424",
+      "username": "luluow",
+      "score": 665,
+      "date_str": "2026-04-09",
+      "recorded_at": "2026-04-09T15:39:20.479Z"
+    },
+    {
+      "user_id": "400023098499268618",
+      "username": "barmeloxanthony17",
+      "score": 924,
+      "date_str": "2026-04-09",
+      "recorded_at": "2026-04-09T15:59:42.346Z"
+    },
+    {
+      "user_id": "176159941046960128",
+      "username": "cheesecube",
+      "score": 845,
+      "date_str": "2026-04-09",
+      "recorded_at": "2026-04-09T19:03:13.798Z"
+    },
+    {
+      "user_id": "306042421500968960",
+      "username": "scion.ara",
+      "score": 859,
+      "date_str": "2026-04-09",
+      "recorded_at": "2026-04-09T19:14:36.137Z"
+    },
+    {
+      "user_id": "400023098499268618",
+      "username": "barmeloxanthony17",
+      "score": 971,
+      "date_str": "2026-04-10",
+      "recorded_at": "2026-04-10T12:37:19.589Z"
+    },
+    {
+      "user_id": "242014522393624578",
+      "username": "krypt0nkrusader",
+      "score": 965,
+      "date_str": "2026-04-10",
+      "recorded_at": "2026-04-10T12:46:36.460Z"
+    },
+    {
+      "user_id": "449399625389047829",
+      "username": "rustyshackleford_dota",
+      "score": 948,
+      "date_str": "2026-04-10",
+      "recorded_at": "2026-04-10T13:02:08.915Z"
+    },
+    {
+      "user_id": "176835137789493249",
+      "username": "phantomjellybean",
+      "score": 901,
+      "date_str": "2026-04-10",
+      "recorded_at": "2026-04-10T13:49:37.604Z"
+    },
+    {
+      "user_id": "177638660504551424",
+      "username": "luluow",
+      "score": 968,
+      "date_str": "2026-04-10",
+      "recorded_at": "2026-04-10T15:13:32.402Z"
+    },
+    {
+      "user_id": "175759536274014208",
+      "username": "jackrzu",
+      "score": 733,
+      "date_str": "2026-04-10",
+      "recorded_at": "2026-04-10T15:52:11.392Z"
+    },
+    {
+      "user_id": "674481209132318723",
+      "username": "kflan13",
+      "score": 929,
+      "date_str": "2026-04-10",
+      "recorded_at": "2026-04-10T18:02:22.644Z"
+    },
+    {
+      "user_id": "151875328124387330",
+      "username": "red40warrior",
+      "score": 940,
+      "date_str": "2026-04-10",
+      "recorded_at": "2026-04-10T18:12:24.030Z"
+    },
+    {
+      "user_id": "176159941046960128",
+      "username": "cheesecube",
+      "score": 939,
+      "date_str": "2026-04-10",
+      "recorded_at": "2026-04-10T18:17:24.966Z"
+    },
+    {
+      "user_id": "215273003888541696",
+      "username": "djimmy23",
+      "score": 930,
+      "date_str": "2026-04-10",
+      "recorded_at": "2026-04-10T22:26:16.971Z"
+    },
+    {
+      "user_id": "177528463710748672",
+      "username": "erratickiwi",
+      "score": 955,
+      "date_str": "2026-04-11",
+      "recorded_at": "2026-04-11T12:18:06.694Z"
+    },
+    {
+      "user_id": "242014522393624578",
+      "username": "krypt0nkrusader",
+      "score": 979,
+      "date_str": "2026-04-11",
+      "recorded_at": "2026-04-11T12:46:37.958Z"
+    },
+    {
+      "user_id": "151875328124387330",
+      "username": "red40warrior",
+      "score": 929,
+      "date_str": "2026-04-11",
+      "recorded_at": "2026-04-11T13:18:25.977Z"
+    },
+    {
+      "user_id": "175759536274014208",
+      "username": "jackrzu",
+      "score": 732,
+      "date_str": "2026-04-11",
+      "recorded_at": "2026-04-11T13:26:03.431Z"
+    },
+    {
+      "user_id": "449399625389047829",
+      "username": "rustyshackleford_dota",
+      "score": 943,
+      "date_str": "2026-04-11",
+      "recorded_at": "2026-04-11T13:42:57.038Z"
+    },
+    {
+      "user_id": "306042421500968960",
+      "username": "scion.ara",
+      "score": 885,
+      "date_str": "2026-04-11",
+      "recorded_at": "2026-04-11T14:00:18.612Z"
+    },
+    {
+      "user_id": "177638660504551424",
+      "username": "luluow",
+      "score": 862,
+      "date_str": "2026-04-11",
+      "recorded_at": "2026-04-11T15:09:39.845Z"
+    },
+    {
+      "user_id": "176159941046960128",
+      "username": "cheesecube",
+      "score": 947,
+      "date_str": "2026-04-11",
+      "recorded_at": "2026-04-11T15:10:23.111Z"
+    },
+    {
+      "user_id": "176835137789493249",
+      "username": "phantomjellybean",
+      "score": 905,
+      "date_str": "2026-04-11",
+      "recorded_at": "2026-04-11T15:37:59.708Z"
+    },
+    {
+      "user_id": "215273003888541696",
+      "username": "djimmy23",
+      "score": 854,
+      "date_str": "2026-04-11",
+      "recorded_at": "2026-04-11T23:19:31.001Z"
+    },
+    {
+      "user_id": "175757349284347904",
+      "username": "admiral_stupid",
+      "score": 936,
+      "date_str": "2026-04-11",
+      "recorded_at": "2026-04-11T23:21:49.952Z"
+    },
+    {
+      "user_id": "176835137789493249",
+      "username": "phantomjellybean",
+      "score": 954,
+      "date_str": "2026-04-12",
+      "recorded_at": "2026-04-12T12:15:45.534Z"
+    },
+    {
+      "user_id": "242014522393624578",
+      "username": "krypt0nkrusader",
+      "score": 937,
+      "date_str": "2026-04-12",
+      "recorded_at": "2026-04-12T12:56:02.412Z"
+    },
+    {
+      "user_id": "449399625389047829",
+      "username": "rustyshackleford_dota",
+      "score": 886,
+      "date_str": "2026-04-12",
+      "recorded_at": "2026-04-12T13:32:31.865Z"
+    },
+    {
+      "user_id": "215273003888541696",
+      "username": "djimmy23",
+      "score": 900,
+      "date_str": "2026-04-12",
+      "recorded_at": "2026-04-12T13:42:22.191Z"
+    },
+    {
+      "user_id": "175759536274014208",
+      "username": "jackrzu",
+      "score": 926,
+      "date_str": "2026-04-12",
+      "recorded_at": "2026-04-12T15:08:07.280Z"
+    },
+    {
+      "user_id": "151875328124387330",
+      "username": "red40warrior",
+      "score": 921,
+      "date_str": "2026-04-12",
+      "recorded_at": "2026-04-12T15:08:47.767Z"
+    },
+    {
+      "user_id": "306042421500968960",
+      "username": "scion.ara",
+      "score": 920,
+      "date_str": "2026-04-12",
+      "recorded_at": "2026-04-12T15:12:40.522Z"
+    },
+    {
+      "user_id": "177638660504551424",
+      "username": "luluow",
+      "score": 919,
+      "date_str": "2026-04-12",
+      "recorded_at": "2026-04-12T15:35:58.716Z"
+    },
+    {
+      "user_id": "176159941046960128",
+      "username": "cheesecube",
+      "score": 939,
+      "date_str": "2026-04-12",
+      "recorded_at": "2026-04-12T15:42:43.152Z"
+    }
+  ]
+}
