@@ -141,6 +141,16 @@ function buildAnnouncement(dateStr) {
       : '_No data yet_'
   });
 
+  const SHAME = ['💀', '😬', '🤡'];
+  embed.addFields({
+    name: '🗑️ Bottom 3 Single-Day Scores (all time)',
+    value: bottom3.length
+      ? bottom3.map((r, i) =>
+          `${SHAME[i]} **${r.username}** — ${r.score.toLocaleString()} pts on ${formatDate(r.date_str)}`
+        ).join('\n')
+      : '_No data yet_'
+  });
+
   return embed;
 }
 
