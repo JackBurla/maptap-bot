@@ -194,11 +194,11 @@ function buildAnnouncement(dateStr) {
   if (stats) {
     let todayVal = [
       `Best:    **${stats.best.username}** - ${stats.best.score.toLocaleString()} pts`,
-      `:Dunce: **${stats.worst.username}** - ${stats.worst.score.toLocaleString()} pts`,
+      `<:Dunce:1492203597373636698> **${stats.worst.username}** - ${stats.worst.score.toLocaleString()} pts`,
       `Average: ${stats.avg.toLocaleString()} pts (${stats.count} players)`,
     ];
     if (stats.worstRound) {
-      todayVal.push(`:Dunce: Worst guess: **${stats.worstRound.username}** - ${stats.worstRound.value} pts`);
+      todayVal.push(`<:Dunce:1492203597373636698> Worst guess: **${stats.worstRound.username}** - ${stats.worstRound.value} pts`);
     }
     embed.addFields({ name: "Today's Scores", value: todayVal.join('\n') });
   } else {
