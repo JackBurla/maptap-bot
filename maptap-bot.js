@@ -192,11 +192,21 @@ function buildAnnouncement(dateStr) {
 
   // Today's scores
   if (stats) {
-    let todayVal = [
-      `Best:    **${stats.best.username}** - ${stats.best.score.toLocaleString()} pts`,
-      `<:Dunce:1492203597373636698> **${stats.worst.username}** - ${stats.worst.score.toLocaleString()} pts`,
-      `Average: ${stats.avg.toLocaleString()} pts (${stats.count} players)`,
-    ];
+    const DAILY_MEDALS = ['🥇', '🥈', '🥉'];
+    const todayAll = loadDB().scores
+      .filter(s => s.date_str === dateStr)
+      .sort((a, b) => b.score - a.score);
+    const medalists = assignMedals(todayAll);
+    const medalMap = {};
+    for (const m of medalists) medalMap[m.user_id] = DAILY_MEDALS[['gold','silver','bronze'].indexOf(m.medal)];
+
+    let todayVal = [];
+    for (const m of medalists) {
+      todayVal.push(`${medalMap[m.user_id]} **${m.username}** - ${m.score.toLocaleString()} pts`);
+    }
+    todayVal.push('');
+    todayVal.push(`<:Dunce:1492203597373636698> **${stats.worst.username}** - ${stats.worst.score.toLocaleString()} pts`);
+    todayVal.push(`Average: ${stats.avg.toLocaleString()} pts (${stats.count} players)`);
     if (stats.worstRound) {
       todayVal.push(`<:Dunce:1492203597373636698> Worst guess: **${stats.worstRound.username}** - ${stats.worstRound.value} pts`);
     }
