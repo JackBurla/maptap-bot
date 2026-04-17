@@ -360,7 +360,7 @@ client.on('interactionCreate', async (interaction) => {
         { name: 'Best Placement',  value: `#${stats.bestPlacement} of ${stats.bestPlacementTotal}`, inline: true },
         { name: 'Worst Placement', value: `#${stats.worstPlacement} of ${stats.worstPlacementTotal}`, inline: true },
         { name: 'Avg Placement',   value: `#${stats.avgPlacement}`, inline: true },
-        { name: 'Medals', value: `\U0001f947${stats.medals.gold} \U0001f948${stats.medals.silver} \U0001f949${stats.medals.bronze}`, inline: true },
+        { name: 'Medals', value: `🥇${stats.medals.gold} 🥈${stats.medals.silver} 🥉${stats.medals.bronze}`, inline: true },
         ...(stats.worstGuess ? [{ name: 'Worst Single Guess', value: `${stats.worstGuess.value} pts on ${formatDate(stats.worstGuess.date)}`, inline: true }] : []),
       );
     await interaction.editReply({ embeds: [embed] });
