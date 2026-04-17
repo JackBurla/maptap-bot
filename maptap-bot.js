@@ -274,11 +274,97 @@ client.on('messageCreate', async (message) => {
   }
 });
 
+async function getMyStats(userId) {
+  const { rows } = await pool.query('SELECT * FROM scores WHERE user_id = $1 ORDER BY date_str', [userId]);
+  if (!rows.length) return null;
+
+  const scores = rows.map(r => r.score);
+  const best   = Math.max(...scores);
+  const worst  = Math.min(...scores);
+  const avg    = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+
+  const placements = [];
+  const placementCounts = [];
+  for (const row of rows) {
+    const { rows: dayRows } = await pool.query(
+      'SELECT user_id, score FROM scores WHERE date_str = $1 ORDER BY score DESC', [row.date_str]
+    );
+    const medalists = assignMedals(dayRows);
+    const myMedal   = medalists.find(m => m.user_id === userId);
+    if (myMedal) {
+      placements.push(['gold','silver','bronze'].indexOf(myMedal.medal) + 1);
+    } else {
+      placements.push(dayRows.findIndex(r => r.user_id === userId) + 1);
+    }
+    placementCounts.push(dayRows.length);
+  }
+
+  const bestPlacement  = Math.min(...placements);
+  const worstPlacement = Math.max(...placements);
+  const avgPlacement   = (placements.reduce((a, b) => a + b, 0) / placements.length).toFixed(1);
+
+  const medals = { gold: 0, silver: 0, bronze: 0 };
+  for (const row of rows) {
+    const { rows: dayRows } = await pool.query(
+      'SELECT user_id, score FROM scores WHERE date_str = $1 ORDER BY score DESC', [row.date_str]
+    );
+    const m = assignMedals(dayRows).find(m => m.user_id === userId);
+    if (m) medals[m.medal]++;
+  }
+
+  // Worst individual round guess ever
+  let worstGuess = null;
+  for (const row of rows) {
+    if (!row.rounds || !row.rounds.length) continue;
+    const min = Math.min(...row.rounds);
+    if (worstGuess === null || min < worstGuess.value) {
+      worstGuess = { value: min, date: row.date_str };
+    }
+  }
+
+  const bestIdx   = placements.indexOf(Math.min(...placements));
+  const worstIdx  = placements.indexOf(Math.max(...placements));
+  const bestPlacementTotal  = placementCounts[bestIdx];
+  const worstPlacementTotal = placementCounts[worstIdx];
+
+  return { days: rows.length, best, worst, avg, bestPlacement, worstPlacement, avgPlacement, medals,
+    bestPlacementTotal, worstPlacementTotal,
+    bestDate:  rows.find(r => r.score === best).date_str,
+    worstDate: rows.find(r => r.score === worst).date_str,
+    worstGuess };
+}
+
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-  if (interaction.commandName !== 'maptap') return;
-  await interaction.deferReply();
-  await interaction.editReply({ embeds: [await buildAnnouncement(todayEST())] });
+
+  if (interaction.commandName === 'maptap') {
+    await interaction.deferReply();
+    await interaction.editReply({ embeds: [await buildAnnouncement(todayEST())] });
+  }
+
+  if (interaction.commandName === 'mystats') {
+    await interaction.deferReply({ ephemeral: true });
+    const stats = await getMyStats(interaction.user.id);
+    if (!stats) {
+      await interaction.editReply({ content: 'No scores found for you yet!' });
+      return;
+    }
+    const embed = new EmbedBuilder()
+      .setTitle('Your MapTap Stats')
+      .setColor(0x5865F2)
+      .addFields(
+        { name: 'Games Played',    value: `${stats.days}`, inline: true },
+        { name: 'Best Score',      value: `${stats.best.toLocaleString()} pts on ${formatDate(stats.bestDate)}`, inline: true },
+        { name: 'Worst Score',     value: `${stats.worst.toLocaleString()} pts on ${formatDate(stats.worstDate)}`, inline: true },
+        { name: 'Average Score',   value: `${stats.avg.toLocaleString()} pts`, inline: true },
+        { name: 'Best Placement',  value: `#${stats.bestPlacement} of ${stats.bestPlacementTotal}`, inline: true },
+        { name: 'Worst Placement', value: `#${stats.worstPlacement} of ${stats.worstPlacementTotal}`, inline: true },
+        { name: 'Avg Placement',   value: `#${stats.avgPlacement}`, inline: true },
+        { name: 'Medals', value: `\U0001f947${stats.medals.gold} \U0001f948${stats.medals.silver} \U0001f949${stats.medals.bronze}`, inline: true },
+        ...(stats.worstGuess ? [{ name: 'Worst Single Guess', value: `${stats.worstGuess.value} pts on ${formatDate(stats.worstGuess.date)}`, inline: true }] : []),
+      );
+    await interaction.editReply({ embeds: [embed] });
+  }
 });
 
 cron.schedule('0 21 * * *', async () => {
