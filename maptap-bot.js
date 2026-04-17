@@ -367,6 +367,35 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
+const INSULTS = [
+  "this guy's fuckin retarded!",
+  "skill issue.",
+  "your dad doesn't love you",
+  "respectfully, what the fuck",
+  "🤡🤡🤡🤡🤡",
+  "https://en.wikipedia.org/wiki/Walter_E._Fernald_Developmental_Center",
+  "https://www.ice.gov/careers/how-apply",
+];
+
+cron.schedule('1 21 * * *', async () => {
+  try {
+    const dateStr = todayEST();
+    const { rows } = await pool.query(
+      'SELECT * FROM scores WHERE date_str = $1 AND message_id IS NOT NULL ORDER BY score ASC LIMIT 1',
+      [dateStr]
+    );
+    if (!rows.length) return;
+    const loser = rows[0];
+    const insult = INSULTS[Math.floor(Math.random() * INSULTS.length)];
+    const ch  = await client.channels.fetch(loser.channel_id);
+    const msg = await ch.messages.fetch(loser.message_id);
+    await msg.reply(insult);
+    console.log(`Insulted ${loser.username}`);
+  } catch (err) {
+    console.error('Failed to send insult:', err);
+  }
+}, { timezone: 'America/New_York' });
+
 cron.schedule('0 21 * * *', async () => {
   try {
     const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
