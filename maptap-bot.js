@@ -375,6 +375,11 @@ const INSULTS = [
   "🤡🤡🤡🤡🤡",
   "https://en.wikipedia.org/wiki/Walter_E._Fernald_Developmental_Center",
   "https://www.ice.gov/careers/how-apply",
+  "congrats on your lobotomy",
+  "inbred",
+  "after much analysis you are actually the bot",
+  "https://www.youtube.com/watch?v=LrkEc2V3mO4",
+  "https://www.youtube.com/watch?v=XcyhMmLTKss",
 ];
 
 cron.schedule('1 21 * * *', async () => {
