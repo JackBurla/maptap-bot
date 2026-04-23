@@ -380,14 +380,10 @@ client.on('interactionCreate', async (interaction) => {
 
 const INSULTS = [
   "this guy's fuckin retarded!",
-  "skill issue.",
-  "your dad doesn't love you",
-  "respectfully, what the fuck",
   "🤡🤡🤡🤡🤡",
   "https://en.wikipedia.org/wiki/Walter_E._Fernald_Developmental_Center",
   "https://www.ice.gov/careers/how-apply",
   "congrats on your lobotomy",
-  "inbred",
   "after much analysis you are actually the bot",
   "https://www.youtube.com/watch?v=LrkEc2V3mO4",
   "https://www.youtube.com/watch?v=XcyhMmLTKss",
@@ -398,6 +394,9 @@ const INSULTS = [
   "charlie kirk died for this",
   "hey there! congrats on the lowest score. atleast you aren't @hellorobotics",
   "i am a nihlist",
+  "the cia killed JFK",
+  "i maptapped your mother",
+  "new game! AncestryTap! Your parents are cousins!",
 ];
 
 cron.schedule('1 21 * * *', async () => {
