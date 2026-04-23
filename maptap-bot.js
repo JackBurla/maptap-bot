@@ -382,10 +382,11 @@ const INSULTS = [
   "this guy's fuckin retarded!",
   "https://en.wikipedia.org/wiki/Walter_E._Fernald_Developmental_Center",
   "https://www.ice.gov/careers/how-apply",
-  "after much analysis you are actually the bot",
+  "congrats on your lobotomy",
   "https://www.youtube.com/watch?v=LrkEc2V3mO4",
   "https://www.youtube.com/watch?v=XcyhMmLTKss",
   "you ever think they just maptapped wrong and blew up an Iranian hospital? Anyway nice score retard",
+  "budd dwyer should be your role model",
   "in the steroid era this was refreshing",
   "median average voter",
   "charlie kirk died for this",
@@ -396,11 +397,14 @@ const INSULTS = [
   "new game! AncestryTap! Your parents are cousins!",
 ];
 
+// Bump this any time the seed data needs to change — triggers a re-seed on next deploy
+const QUEUE_VERSION = 2;
+
 const INSULTS_ALREADY_USED = [
   "this guy's fuckin retarded!",
+  "https://www.ice.gov/careers/how-apply",
+  "congrats on your lobotomy",
   "https://www.youtube.com/watch?v=LrkEc2V3mO4",
-  "https://www.youtube.com/watch?v=XcyhMmLTKss",
-  "in the steroid era this was refreshing",
 ];
 
 function shuffle(arr) {
@@ -415,34 +419,37 @@ function shuffle(arr) {
 async function setupInsultQueue() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS insult_state (
-      id    INTEGER PRIMARY KEY DEFAULT 1,
-      queue JSONB NOT NULL DEFAULT '[]',
-      used  JSONB NOT NULL DEFAULT '[]'
+      id      INTEGER PRIMARY KEY DEFAULT 1,
+      queue   JSONB NOT NULL DEFAULT '[]',
+      used    JSONB NOT NULL DEFAULT '[]',
+      version INTEGER NOT NULL DEFAULT 0
     )
   `);
+  await pool.query(`ALTER TABLE insult_state ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 0`);
 
   const inserted = await pool.query(`
     INSERT INTO insult_state (id) VALUES (1) ON CONFLICT DO NOTHING RETURNING id
   `);
 
-  if (inserted.rows.length > 0) {
-    // First boot — seed queue with unused insults shuffled, used ones at back
+  const { rows } = await pool.query('SELECT queue, used, version FROM insult_state WHERE id = 1');
+  const state = rows[0];
+
+  if (inserted.rows.length > 0 || state.version < QUEUE_VERSION) {
+    // First boot or version mismatch — re-seed with correct data
     const unused = shuffle(INSULTS.filter(i => !INSULTS_ALREADY_USED.includes(i)));
     await pool.query(
-      'UPDATE insult_state SET queue = $1, used = $2 WHERE id = 1',
-      [JSON.stringify(unused), JSON.stringify(INSULTS_ALREADY_USED)]
+      'UPDATE insult_state SET queue = $1, used = $2, version = $3 WHERE id = 1',
+      [JSON.stringify(unused), JSON.stringify(INSULTS_ALREADY_USED), QUEUE_VERSION]
     );
-    console.log('Insult queue initialized');
+    console.log(`Insult queue seeded (v${QUEUE_VERSION})`);
   } else {
     // Subsequent boots — prepend any brand-new insults to front of queue
-    const { rows } = await pool.query('SELECT queue, used FROM insult_state WHERE id = 1');
-    const { queue, used } = rows[0];
-    const known = new Set([...queue, ...used]);
+    const known = new Set([...state.queue, ...state.used]);
     const brandNew = shuffle(INSULTS.filter(i => !known.has(i)));
     if (brandNew.length > 0) {
       await pool.query(
         'UPDATE insult_state SET queue = $1 WHERE id = 1',
-        [JSON.stringify([...brandNew, ...queue])]
+        [JSON.stringify([...brandNew, ...state.queue])]
       );
       console.log(`Added ${brandNew.length} new insult(s) to front of queue`);
     }
@@ -451,8 +458,8 @@ async function setupInsultQueue() {
 }
 
 async function pickInsult() {
-  const { rows } = await pool.query('SELECT queue, used FROM insult_state WHERE id = 1');
-  let { queue, used } = rows[0];
+  const { rows } = await pool.query('SELECT queue, used, version FROM insult_state WHERE id = 1');
+  let { queue, used, version } = rows[0];
 
   if (queue.length === 0) {
     queue = shuffle(INSULTS);
@@ -464,8 +471,8 @@ async function pickInsult() {
   used.push(insult);
 
   await pool.query(
-    'UPDATE insult_state SET queue = $1, used = $2 WHERE id = 1',
-    [JSON.stringify(queue), JSON.stringify(used)]
+    'UPDATE insult_state SET queue = $1, used = $2, version = $3 WHERE id = 1',
+    [JSON.stringify(queue), JSON.stringify(used), version]
   );
 
   return insult;
