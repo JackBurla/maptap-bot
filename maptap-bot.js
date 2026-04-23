@@ -391,6 +391,13 @@ const INSULTS = [
   "after much analysis you are actually the bot",
   "https://www.youtube.com/watch?v=LrkEc2V3mO4",
   "https://www.youtube.com/watch?v=XcyhMmLTKss",
+  "you ever think they just maptapped wrong and blew up an Iranian hospital? Anyway nice score retard",
+  "budd dwyer should be your role model",
+  "in the steroid era this was refreshing",
+  "median average voter",
+  "charlie kirk died for this",
+  "hey there! congrats on the lowest score. atleast you aren't @hellorobotics",
+  "i am a nihlist",
 ];
 
 cron.schedule('1 21 * * *', async () => {
