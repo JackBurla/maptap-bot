@@ -380,15 +380,12 @@ client.on('interactionCreate', async (interaction) => {
 
 const INSULTS = [
   "this guy's fuckin retarded!",
-  "🤡🤡🤡🤡🤡",
   "https://en.wikipedia.org/wiki/Walter_E._Fernald_Developmental_Center",
   "https://www.ice.gov/careers/how-apply",
-  "congrats on your lobotomy",
   "after much analysis you are actually the bot",
   "https://www.youtube.com/watch?v=LrkEc2V3mO4",
   "https://www.youtube.com/watch?v=XcyhMmLTKss",
   "you ever think they just maptapped wrong and blew up an Iranian hospital? Anyway nice score retard",
-  "budd dwyer should be your role model",
   "in the steroid era this was refreshing",
   "median average voter",
   "charlie kirk died for this",
@@ -399,6 +396,81 @@ const INSULTS = [
   "new game! AncestryTap! Your parents are cousins!",
 ];
 
+const INSULTS_ALREADY_USED = [
+  "this guy's fuckin retarded!",
+  "https://www.youtube.com/watch?v=LrkEc2V3mO4",
+  "https://www.youtube.com/watch?v=XcyhMmLTKss",
+  "in the steroid era this was refreshing",
+];
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+async function setupInsultQueue() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS insult_state (
+      id    INTEGER PRIMARY KEY DEFAULT 1,
+      queue JSONB NOT NULL DEFAULT '[]',
+      used  JSONB NOT NULL DEFAULT '[]'
+    )
+  `);
+
+  const inserted = await pool.query(`
+    INSERT INTO insult_state (id) VALUES (1) ON CONFLICT DO NOTHING RETURNING id
+  `);
+
+  if (inserted.rows.length > 0) {
+    // First boot — seed queue with unused insults shuffled, used ones at back
+    const unused = shuffle(INSULTS.filter(i => !INSULTS_ALREADY_USED.includes(i)));
+    await pool.query(
+      'UPDATE insult_state SET queue = $1, used = $2 WHERE id = 1',
+      [JSON.stringify(unused), JSON.stringify(INSULTS_ALREADY_USED)]
+    );
+    console.log('Insult queue initialized');
+  } else {
+    // Subsequent boots — prepend any brand-new insults to front of queue
+    const { rows } = await pool.query('SELECT queue, used FROM insult_state WHERE id = 1');
+    const { queue, used } = rows[0];
+    const known = new Set([...queue, ...used]);
+    const brandNew = shuffle(INSULTS.filter(i => !known.has(i)));
+    if (brandNew.length > 0) {
+      await pool.query(
+        'UPDATE insult_state SET queue = $1 WHERE id = 1',
+        [JSON.stringify([...brandNew, ...queue])]
+      );
+      console.log(`Added ${brandNew.length} new insult(s) to front of queue`);
+    }
+  }
+  console.log('Insult queue ready');
+}
+
+async function pickInsult() {
+  const { rows } = await pool.query('SELECT queue, used FROM insult_state WHERE id = 1');
+  let { queue, used } = rows[0];
+
+  if (queue.length === 0) {
+    queue = shuffle(INSULTS);
+    used = [];
+    console.log('Insult queue cycled — starting new round');
+  }
+
+  const insult = queue.shift();
+  used.push(insult);
+
+  await pool.query(
+    'UPDATE insult_state SET queue = $1, used = $2 WHERE id = 1',
+    [JSON.stringify(queue), JSON.stringify(used)]
+  );
+
+  return insult;
+}
+
 cron.schedule('1 21 * * *', async () => {
   try {
     const dateStr = todayEST();
@@ -408,7 +480,7 @@ cron.schedule('1 21 * * *', async () => {
     );
     if (!rows.length) return;
     const loser = rows[0];
-    const insult = INSULTS[Math.floor(Math.random() * INSULTS.length)];
+    const insult = await pickInsult();
     const ch  = await client.channels.fetch(loser.channel_id);
     const msg = await ch.messages.fetch(loser.message_id);
     await msg.reply(insult);
@@ -429,4 +501,6 @@ cron.schedule('0 21 * * *', async () => {
   }
 }, { timezone: 'America/New_York' });
 
-setupDB().then(() => client.login(TOKEN));
+setupDB()
+  .then(() => setupInsultQueue())
+  .then(() => client.login(TOKEN));
