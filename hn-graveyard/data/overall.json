@@ -1,0 +1,12 @@
+{
+  "n_show_hn": 201922,
+  "n_zero_engagement": 52222,
+  "n_unique_authors": 88951,
+  "n_one_and_done": 14381,
+  "n_dead_urls": 28550,
+  "pct_zero": 25.9,
+  "pct_dead_urls": 15.0,
+  "pct_checked_dead": 51.1,
+  "n_urls_checked": 47198,
+  "headline": "We processed 201,922 Show HN posts across the full HackerNews archive. 52,222 launched to silence. 14,381 accounts never posted another Show HN."
+}
