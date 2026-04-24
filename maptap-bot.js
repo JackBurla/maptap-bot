@@ -44,6 +44,12 @@ function todayEST() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
+function yesterdayEST() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+
 function formatDate(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -478,9 +484,9 @@ async function pickInsult() {
   return insult;
 }
 
-cron.schedule('1 21 * * *', async () => {
+cron.schedule('1 0 * * *', async () => {
   try {
-    const dateStr = todayEST();
+    const dateStr = yesterdayEST();
     const { rows } = await pool.query(
       'SELECT * FROM scores WHERE date_str = $1 AND message_id IS NOT NULL ORDER BY score ASC LIMIT 1',
       [dateStr]
@@ -497,11 +503,11 @@ cron.schedule('1 21 * * *', async () => {
   }
 }, { timezone: 'America/New_York' });
 
-cron.schedule('0 21 * * *', async () => {
+cron.schedule('0 0 * * *', async () => {
   try {
     const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
     if (!channel?.isTextBased()) return;
-    await channel.send({ embeds: [await buildAnnouncement(todayEST())] });
+    await channel.send({ embeds: [await buildAnnouncement(yesterdayEST())] });
     console.log('Daily recap sent');
   } catch (err) {
     console.error('Failed to send recap:', err);
