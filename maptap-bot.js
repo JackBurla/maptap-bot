@@ -455,9 +455,9 @@ async function setupInsultQueue() {
     if (brandNew.length > 0) {
       await pool.query(
         'UPDATE insult_state SET queue = $1 WHERE id = 1',
-        [JSON.stringify([...brandNew, ...state.queue])]
+        [JSON.stringify([...state.queue, ...brandNew])]
       );
-      console.log(`Added ${brandNew.length} new insult(s) to front of queue`);
+      console.log(`Added ${brandNew.length} new insult(s) to back of queue`);
     }
   }
   console.log('Insult queue ready');
