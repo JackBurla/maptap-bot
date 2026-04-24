@@ -425,20 +425,32 @@ function shuffle(arr) {
 async function setupInsultQueue() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS insult_state (
-      id      INTEGER PRIMARY KEY DEFAULT 1,
-      queue   JSONB NOT NULL DEFAULT '[]',
-      used    JSONB NOT NULL DEFAULT '[]',
-      version INTEGER NOT NULL DEFAULT 0
+      id               INTEGER PRIMARY KEY DEFAULT 1,
+      queue            JSONB NOT NULL DEFAULT '[]',
+      used             JSONB NOT NULL DEFAULT '[]',
+      version          INTEGER NOT NULL DEFAULT 0,
+      last_recap_date  TEXT,
+      last_insult_date TEXT
     )
   `);
   await pool.query(`ALTER TABLE insult_state ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE insult_state ADD COLUMN IF NOT EXISTS last_recap_date TEXT`);
+  await pool.query(`ALTER TABLE insult_state ADD COLUMN IF NOT EXISTS last_insult_date TEXT`);
 
   const inserted = await pool.query(`
     INSERT INTO insult_state (id) VALUES (1) ON CONFLICT DO NOTHING RETURNING id
   `);
 
-  const { rows } = await pool.query('SELECT queue, used, version FROM insult_state WHERE id = 1');
+  const { rows } = await pool.query('SELECT queue, used, version, last_recap_date, last_insult_date FROM insult_state WHERE id = 1');
   const state = rows[0];
+
+  // Seed last_*_date to today if null — prevents tonight's midnight run after the 9PM already fired
+  if (!state.last_recap_date || !state.last_insult_date) {
+    await pool.query(
+      'UPDATE insult_state SET last_recap_date = COALESCE(last_recap_date, $1), last_insult_date = COALESCE(last_insult_date, $1) WHERE id = 1',
+      [todayEST()]
+    );
+  }
 
   if (inserted.rows.length > 0 || state.version < QUEUE_VERSION) {
     // First boot or version mismatch — re-seed with correct data
@@ -487,6 +499,11 @@ async function pickInsult() {
 cron.schedule('1 0 * * *', async () => {
   try {
     const dateStr = yesterdayEST();
+    const { rows: stateRows } = await pool.query('SELECT last_insult_date FROM insult_state WHERE id = 1');
+    if (stateRows[0]?.last_insult_date === dateStr) {
+      console.log(`Insult already sent for ${dateStr}, skipping`);
+      return;
+    }
     const { rows } = await pool.query(
       'SELECT * FROM scores WHERE date_str = $1 AND message_id IS NOT NULL ORDER BY score ASC LIMIT 1',
       [dateStr]
@@ -497,6 +514,7 @@ cron.schedule('1 0 * * *', async () => {
     const ch  = await client.channels.fetch(loser.channel_id);
     const msg = await ch.messages.fetch(loser.message_id);
     await msg.reply(insult);
+    await pool.query('UPDATE insult_state SET last_insult_date = $1 WHERE id = 1', [dateStr]);
     console.log(`Insulted ${loser.username}`);
   } catch (err) {
     console.error('Failed to send insult:', err);
@@ -505,9 +523,16 @@ cron.schedule('1 0 * * *', async () => {
 
 cron.schedule('0 0 * * *', async () => {
   try {
+    const dateStr = yesterdayEST();
+    const { rows: stateRows } = await pool.query('SELECT last_recap_date FROM insult_state WHERE id = 1');
+    if (stateRows[0]?.last_recap_date === dateStr) {
+      console.log(`Recap already sent for ${dateStr}, skipping`);
+      return;
+    }
     const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
     if (!channel?.isTextBased()) return;
-    await channel.send({ embeds: [await buildAnnouncement(yesterdayEST())] });
+    await channel.send({ embeds: [await buildAnnouncement(dateStr)] });
+    await pool.query('UPDATE insult_state SET last_recap_date = $1 WHERE id = 1', [dateStr]);
     console.log('Daily recap sent');
   } catch (err) {
     console.error('Failed to send recap:', err);
