@@ -4,7 +4,8 @@
  * Env vars: DISCORD_TOKEN, ANNOUNCE_CHANNEL_ID, DATABASE_URL (Railway provides this automatically)
  */
 
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const path = require('path');
 const cron = require('node-cron');
 const { Pool } = require('pg');
 
@@ -401,10 +402,15 @@ const INSULTS = [
   "the cia killed JFK",
   "i maptapped your mother",
   "new game! AncestryTap! Your parents are cousins!",
+  { image: 'calvin.png' },
+  { image: 'child-left-behind.png' },
+  "https://www.proprofs.com/quiz-school/quizzes/do-i-have-cte-quiz",
+  "https://msktc.org/tbi",
+  "https://specialneedsanswers.com/housing-options-for-adults-with-special-needs-14975",
 ];
 
 // Bump this any time the seed data needs to change — triggers a re-seed on next deploy
-const QUEUE_VERSION = 2;
+const QUEUE_VERSION = 3;
 
 const INSULTS_ALREADY_USED = [
   "this guy's fuckin retarded!",
@@ -513,7 +519,12 @@ cron.schedule('1 0 * * *', async () => {
     const insult = await pickInsult();
     const ch  = await client.channels.fetch(loser.channel_id);
     const msg = await ch.messages.fetch(loser.message_id);
-    await msg.reply(insult);
+    if (insult && typeof insult === 'object' && insult.image) {
+      const file = new AttachmentBuilder(path.join(__dirname, 'insult-images', insult.image));
+      await msg.reply({ files: [file] });
+    } else {
+      await msg.reply(insult);
+    }
     await pool.query('UPDATE insult_state SET last_insult_date = $1 WHERE id = 1', [dateStr]);
     console.log(`Insulted ${loser.username}`);
   } catch (err) {
