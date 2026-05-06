@@ -404,9 +404,12 @@ const INSULTS = [
   "new game! AncestryTap! Your parents are cousins!",
   { image: 'calvin.png' },
   { image: 'child-left-behind.png' },
+  { image: 'frontal-lobe.png' },
   "https://www.proprofs.com/quiz-school/quizzes/do-i-have-cte-quiz",
   "https://msktc.org/tbi",
   "https://specialneedsanswers.com/housing-options-for-adults-with-special-needs-14975",
+  "if this is kyle kys if not try again next time : )",
+  "Do you ever feel like a plastic bag\nDrifting through the wind, wanting to start again?",
 ];
 
 // Bump this any time the seed data needs to change — triggers a re-seed on next deploy
