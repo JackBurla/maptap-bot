@@ -412,6 +412,7 @@ const INSULTS = [
   "Do you ever feel like a plastic bag\nDrifting through the wind, wanting to start again?",
   "knowledge of world geography is useless its important to focus on your community",
   "https://www.youtube.com/watch?v=AVB_aIXMEgE",
+  "flight 93 was shot down",
 ];
 
 // Bump this any time the seed data needs to change — triggers a re-seed on next deploy
