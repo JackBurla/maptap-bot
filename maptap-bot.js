@@ -413,6 +413,7 @@ const INSULTS = [
   "knowledge of world geography is useless its important to focus on your community",
   "https://www.youtube.com/watch?v=AVB_aIXMEgE",
   "flight 93 was shot down",
+  "Lennie Small lookin ass",
 ];
 
 // Bump this any time the seed data needs to change — triggers a re-seed on next deploy
