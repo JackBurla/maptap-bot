@@ -143,6 +143,27 @@ async function getBottom3IndividualScores() {
   return rows;
 }
 
+async function getDunceLeaderboard() {
+  const { rows } = await pool.query('SELECT * FROM scores ORDER BY date_str');
+  const byDate = {};
+  for (const s of rows) {
+    if (!byDate[s.date_str]) byDate[s.date_str] = [];
+    byDate[s.date_str].push(s);
+  }
+  const tally = {};
+  for (const dateRows of Object.values(byDate)) {
+    const lowest = Math.min(...dateRows.map(s => s.score));
+    for (const s of dateRows.filter(s => s.score === lowest)) {
+      if (!tally[s.user_id]) tally[s.user_id] = { username: s.username, count: 0 };
+      tally[s.user_id].count++;
+      tally[s.user_id].username = s.username;
+    }
+  }
+  return Object.values(tally)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3);
+}
+
 // ── Announcement ──────────────────────────────────────────────────────────
 
 const DAILY_MEDALS = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
@@ -154,6 +175,7 @@ async function buildAnnouncement(dateStr) {
   const medals  = await getMedalLeaderboard();
   const top3    = await getTop3IndividualScores();
   const bottom3 = await getBottom3IndividualScores();
+  const dunces  = await getDunceLeaderboard();
 
   const embed = new EmbedBuilder()
     .setTitle('MapTap Daily Recap')
@@ -202,6 +224,14 @@ async function buildAnnouncement(dateStr) {
   embed.addFields({
     name: 'Best & Worst Single-Day Scores (all time)',
     value: `**Top 3**\n${top3Lines}\n\n**Bottom 3**\n${bottom3Lines}`
+  });
+
+  // Dunce leaderboard
+  embed.addFields({
+    name: `${DUNCE} All-Time Dunce Board (Top 3)`,
+    value: dunces.length
+      ? dunces.map((r, i) => `${i + 1}. **${r.username}** - ${r.count} time${r.count !== 1 ? 's' : ''}`).join('\n')
+      : '_No data yet_'
   });
 
   return embed;
