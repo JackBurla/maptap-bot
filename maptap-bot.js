@@ -445,6 +445,7 @@ const INSULTS = [
   "flight 93 was shot down",
   "Lennie Small lookin ass",
   "congrats to the winner of retard of the day.... Kash Patel! You are second",
+  "https://petersonacademy.com/signup",
 ];
 
 // Bump this any time the seed data needs to change — triggers a re-seed on next deploy
