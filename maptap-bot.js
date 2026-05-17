@@ -413,6 +413,18 @@ client.on('interactionCreate', async (interaction) => {
       );
     await interaction.editReply({ embeds: [embed] });
   }
+
+  if (interaction.commandName === 'queuestate') {
+    await interaction.deferReply({ ephemeral: true });
+    const { rows } = await pool.query('SELECT queue, used FROM insult_state WHERE id = 1');
+    const { queue, used } = rows[0];
+    const label = i => (typeof i === 'object' ? `[image: ${i.image}]` : i);
+    const queueList = queue.map(label).join('\n') || '_empty_';
+    const usedList  = used.map(label).join('\n')  || '_empty_';
+    await interaction.editReply({
+      content: `**Queue (${queue.length} remaining):**\n${queueList}\n\n**Used this cycle (${used.length}):**\n${usedList}`
+    });
+  }
 });
 
 const INSULTS = [
@@ -449,7 +461,7 @@ const INSULTS = [
 ];
 
 // Bump this any time the seed data needs to change — triggers a re-seed on next deploy
-const QUEUE_VERSION = 3;
+const QUEUE_VERSION = 4;
 
 const INSULTS_ALREADY_USED = [
   "this guy's fuckin retarded!",
@@ -499,16 +511,17 @@ async function setupInsultQueue() {
 
   if (inserted.rows.length > 0 || state.version < QUEUE_VERSION) {
     // First boot or version mismatch — re-seed with correct data
-    const unused = shuffle(INSULTS.filter(i => !INSULTS_ALREADY_USED.includes(i)));
+    const usedSet = new Set(INSULTS_ALREADY_USED.map(i => JSON.stringify(i)));
+    const unused = shuffle(INSULTS.filter(i => !usedSet.has(JSON.stringify(i))));
     await pool.query(
       'UPDATE insult_state SET queue = $1, used = $2, version = $3 WHERE id = 1',
       [JSON.stringify(unused), JSON.stringify(INSULTS_ALREADY_USED), QUEUE_VERSION]
     );
     console.log(`Insult queue seeded (v${QUEUE_VERSION})`);
   } else {
-    // Subsequent boots — prepend any brand-new insults to front of queue
-    const known = new Set([...state.queue, ...state.used]);
-    const brandNew = shuffle(INSULTS.filter(i => !known.has(i)));
+    // Subsequent boots — append any brand-new insults to back of queue
+    const known = new Set([...state.queue, ...state.used].map(i => JSON.stringify(i)));
+    const brandNew = shuffle(INSULTS.filter(i => !known.has(JSON.stringify(i))));
     if (brandNew.length > 0) {
       await pool.query(
         'UPDATE insult_state SET queue = $1 WHERE id = 1',
