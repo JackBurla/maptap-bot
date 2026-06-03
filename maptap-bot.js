@@ -461,7 +461,7 @@ const INSULTS = [
 ];
 
 // Bump this any time the seed data needs to change — triggers a re-seed on next deploy
-const QUEUE_VERSION = 5;
+const QUEUE_VERSION = 6;
 
 // All insults confirmed fired (via Discord scrape Jun 2 2026) — go to back of queue
 const INSULTS_ALREADY_USED = [
@@ -479,6 +479,7 @@ const INSULTS_ALREADY_USED = [
   "https://petersonacademy.com/signup",
   "the cia killed JFK",
   "in the steroid era this was refreshing",
+  // flight 93 and kash patel intentionally omitted — reset to count 0 to front-queue them
 ];
 
 function shuffle(arr) {
@@ -541,6 +542,7 @@ async function setupInsultQueue() {
       'https://petersonacademy.com/signup': 1,
       'the cia killed JFK': 1,
       'in the steroid era this was refreshing': 1,
+      // flight 93 and kash patel left at 0 (omitted) so they go to front tier
     };
     await pool.query(
       'UPDATE insult_state SET queue = $1, used = $2, version = $3, counts = $4 WHERE id = 1',
