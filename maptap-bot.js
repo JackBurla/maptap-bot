@@ -458,10 +458,11 @@ const INSULTS = [
   "Lennie Small lookin ass",
   "congrats to the winner of retard of the day.... Kash Patel! You are second",
   "https://petersonacademy.com/signup",
+  "it is cooler to be here than get 1000",
 ];
 
 // Bump this any time the seed data needs to change — triggers a re-seed on next deploy
-const QUEUE_VERSION = 6;
+const QUEUE_VERSION = 7;
 
 // All insults confirmed fired (via Discord scrape Jun 2 2026) — go to back of queue
 const INSULTS_ALREADY_USED = [
@@ -525,7 +526,9 @@ async function setupInsultQueue() {
   if (inserted.rows.length > 0 || state.version < QUEUE_VERSION) {
     // First boot or version mismatch — re-seed with correct data
     const usedSet = new Set(INSULTS_ALREADY_USED.map(i => JSON.stringify(i)));
-    const unused = shuffle(INSULTS.filter(i => !usedSet.has(JSON.stringify(i))));
+    const FIRE_TONIGHT = "it is cooler to be here than get 1000";
+    const rest = shuffle(INSULTS.filter(i => !usedSet.has(JSON.stringify(i)) && i !== FIRE_TONIGHT));
+    const unused = [FIRE_TONIGHT, ...rest];
     // Seed fire counts from Discord scrape (Jun 2 2026)
     const seedCounts = {
       '[image: calvin.png]': 3,
