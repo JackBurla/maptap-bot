@@ -459,6 +459,9 @@ const INSULTS = [
   "congrats to the winner of retard of the day.... Kash Patel! You are second",
   "https://petersonacademy.com/signup",
   "it is cooler to be here than get 1000",
+  "Woodrow Wilson drew better borders drunk at Versailles",
+  "you have the strategic geographic awareness of Pete Hegseth",
+  "this score has been approved by the Department of Education",
 ];
 
 // Bump this any time the seed data needs to change — triggers a re-seed on next deploy
