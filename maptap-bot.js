@@ -465,10 +465,11 @@ const INSULTS = [
 ];
 
 // Bump this any time the seed data needs to change — triggers a re-seed on next deploy
-const QUEUE_VERSION = 7;
+const QUEUE_VERSION = 8;
 
-// All insults confirmed fired (via Discord scrape Jun 2 2026) — go to back of queue
+// All insults confirmed fired — go to back of queue
 const INSULTS_ALREADY_USED = [
+  // confirmed via Discord scrape Jun 2 2026
   { image: 'calvin.png' },
   { image: 'child-left-behind.png' },
   { image: 'frontal-lobe.png' },
@@ -483,7 +484,18 @@ const INSULTS_ALREADY_USED = [
   "https://petersonacademy.com/signup",
   "the cia killed JFK",
   "in the steroid era this was refreshing",
-  // flight 93 and kash patel intentionally omitted — reset to count 0 to front-queue them
+  // confirmed by user Jun 2 2026 (missed by scrape — deleted or pre-cutoff)
+  "this guy's fuckin retarded!",
+  "https://en.wikipedia.org/wiki/Walter_E._Fernald_Developmental_Center",
+  "https://www.ice.gov/careers/how-apply",
+  "congrats on your lobotomy",
+  "https://www.youtube.com/watch?v=LrkEc2V3mO4",
+  "https://www.youtube.com/watch?v=XcyhMmLTKss",
+  "charlie kirk died for this",
+  "hey there! congrats on the lowest score. atleast you aren't @hellorobotics",
+  "https://www.proprofs.com/quiz-school/quizzes/do-i-have-cte-quiz",
+  "https://specialneedsanswers.com/housing-options-for-adults-with-special-needs-14975",
+  "https://www.youtube.com/watch?v=AVB_aIXMEgE",
 ];
 
 function shuffle(arr) {
@@ -549,6 +561,18 @@ async function setupInsultQueue() {
       'the cia killed JFK': 1,
       'in the steroid era this was refreshing': 1,
       // flight 93 and kash patel left at 0 (omitted) so they go to front tier
+      // confirmed by user Jun 2 2026
+      'this guy\'s fuckin retarded!': 1,
+      'https://en.wikipedia.org/wiki/Walter_E._Fernald_Developmental_Center': 1,
+      'https://www.ice.gov/careers/how-apply': 1,
+      'congrats on your lobotomy': 1,
+      'https://www.youtube.com/watch?v=LrkEc2V3mO4': 1,
+      'https://www.youtube.com/watch?v=XcyhMmLTKss': 1,
+      'charlie kirk died for this': 1,
+      'hey there! congrats on the lowest score. atleast you aren\'t @hellorobotics': 1,
+      'https://www.proprofs.com/quiz-school/quizzes/do-i-have-cte-quiz': 1,
+      'https://specialneedsanswers.com/housing-options-for-adults-with-special-needs-14975': 1,
+      'https://www.youtube.com/watch?v=AVB_aIXMEgE': 1,
     };
     await pool.query(
       'UPDATE insult_state SET queue = $1, used = $2, version = $3, counts = $4 WHERE id = 1',
