@@ -461,13 +461,24 @@ const INSULTS = [
 ];
 
 // Bump this any time the seed data needs to change — triggers a re-seed on next deploy
-const QUEUE_VERSION = 4;
+const QUEUE_VERSION = 5;
 
+// All insults confirmed fired (via Discord scrape Jun 2 2026) — go to back of queue
 const INSULTS_ALREADY_USED = [
-  "this guy's fuckin retarded!",
-  "https://www.ice.gov/careers/how-apply",
-  "congrats on your lobotomy",
-  "https://www.youtube.com/watch?v=LrkEc2V3mO4",
+  { image: 'calvin.png' },
+  { image: 'child-left-behind.png' },
+  { image: 'frontal-lobe.png' },
+  "i am a nihlist",
+  "budd dwyer should be your role model",
+  "median average voter",
+  "https://msktc.org/tbi",
+  "new game! AncestryTap! Your parents are cousins!",
+  "Lennie Small lookin ass",
+  "you ever think they just maptapped wrong and blew up an Iranian hospital? Anyway nice score retard",
+  "i maptapped your mother",
+  "https://petersonacademy.com/signup",
+  "the cia killed JFK",
+  "in the steroid era this was refreshing",
 ];
 
 function shuffle(arr) {
