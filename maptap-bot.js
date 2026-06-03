@@ -504,6 +504,7 @@ async function setupInsultQueue() {
   await pool.query(`ALTER TABLE insult_state ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 0`);
   await pool.query(`ALTER TABLE insult_state ADD COLUMN IF NOT EXISTS last_recap_date TEXT`);
   await pool.query(`ALTER TABLE insult_state ADD COLUMN IF NOT EXISTS last_insult_date TEXT`);
+  await pool.query(`ALTER TABLE insult_state ADD COLUMN IF NOT EXISTS counts JSONB NOT NULL DEFAULT '{}'`);
 
   const inserted = await pool.query(`
     INSERT INTO insult_state (id) VALUES (1) ON CONFLICT DO NOTHING RETURNING id
@@ -524,9 +525,26 @@ async function setupInsultQueue() {
     // First boot or version mismatch — re-seed with correct data
     const usedSet = new Set(INSULTS_ALREADY_USED.map(i => JSON.stringify(i)));
     const unused = shuffle(INSULTS.filter(i => !usedSet.has(JSON.stringify(i))));
+    // Seed fire counts from Discord scrape (Jun 2 2026)
+    const seedCounts = {
+      '[image: calvin.png]': 3,
+      '[image: frontal-lobe.png]': 2,
+      '[image: child-left-behind.png]': 2,
+      'i am a nihlist': 2,
+      'budd dwyer should be your role model': 2,
+      'median average voter': 2,
+      'https://msktc.org/tbi': 2,
+      'new game! AncestryTap! Your parents are cousins!': 1,
+      'Lennie Small lookin ass': 1,
+      'you ever think they just maptapped wrong and blew up an Iranian hospital? Anyway nice score retard': 1,
+      'i maptapped your mother': 1,
+      'https://petersonacademy.com/signup': 1,
+      'the cia killed JFK': 1,
+      'in the steroid era this was refreshing': 1,
+    };
     await pool.query(
-      'UPDATE insult_state SET queue = $1, used = $2, version = $3 WHERE id = 1',
-      [JSON.stringify(unused), JSON.stringify(INSULTS_ALREADY_USED), QUEUE_VERSION]
+      'UPDATE insult_state SET queue = $1, used = $2, version = $3, counts = $4 WHERE id = 1',
+      [JSON.stringify(unused), JSON.stringify(INSULTS_ALREADY_USED), QUEUE_VERSION, JSON.stringify(seedCounts)]
     );
     console.log(`Insult queue seeded (v${QUEUE_VERSION})`);
   } else {
@@ -544,12 +562,28 @@ async function setupInsultQueue() {
   console.log('Insult queue ready');
 }
 
+function insultKey(i) {
+  return typeof i === 'object' ? `[image: ${i.image}]` : i;
+}
+
+// Shuffle within count tiers so lower-fired insults always go before higher-fired ones
+function buildCycleQueue(insults, counts) {
+  const groups = {};
+  for (const ins of insults) {
+    const c = counts[insultKey(ins)] || 0;
+    if (!groups[c]) groups[c] = [];
+    groups[c].push(ins);
+  }
+  const sorted = Object.keys(groups).map(Number).sort((a, b) => a - b);
+  return sorted.flatMap(c => shuffle(groups[c]));
+}
+
 async function pickInsult() {
-  const { rows } = await pool.query('SELECT queue, used, version FROM insult_state WHERE id = 1');
-  let { queue, used, version } = rows[0];
+  const { rows } = await pool.query('SELECT queue, used, version, counts FROM insult_state WHERE id = 1');
+  let { queue, used, version, counts } = rows[0];
 
   if (queue.length === 0) {
-    queue = shuffle(INSULTS);
+    queue = buildCycleQueue(INSULTS, counts);
     used = [];
     console.log('Insult queue cycled — starting new round');
   }
@@ -557,9 +591,12 @@ async function pickInsult() {
   const insult = queue.shift();
   used.push(insult);
 
+  const key = insultKey(insult);
+  counts[key] = (counts[key] || 0) + 1;
+
   await pool.query(
-    'UPDATE insult_state SET queue = $1, used = $2, version = $3 WHERE id = 1',
-    [JSON.stringify(queue), JSON.stringify(used), version]
+    'UPDATE insult_state SET queue = $1, used = $2, version = $3, counts = $4 WHERE id = 1',
+    [JSON.stringify(queue), JSON.stringify(used), version, JSON.stringify(counts)]
   );
 
   return insult;
