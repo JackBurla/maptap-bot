@@ -18,6 +18,7 @@ const {
   TextInputStyle
 } = require('discord.js');
 const path = require('path');
+const crypto = require('crypto');
 const cron = require('node-cron');
 const { Pool } = require('pg');
 
@@ -557,9 +558,12 @@ const INSULTS = [
   "https://petersonacademy.com/signup",
   "it is cooler to be here than get 1000 🧂",
   "Woodrow Wilson drew better borders drunk at Versailles",
-  "you have the strategic geographic awareness of Pete Hegseth",
-  "this score has been approved by the Department of Education",
 ];
+
+const INSULTS_REMOVED_HASHES = new Set([
+  '06a5b0d515d74fbc8230cc8495e8892ea904fb527c5a5c8acebe21a15acbb3f5',
+  'cd9187ca09dba8090db21579bc2911a4c44cd6ba5c74841a01c9140116f9667d',
+]);
 
 // Bump this any time the seed data needs to change — triggers a re-seed on next deploy
 const QUEUE_VERSION = 9;
@@ -604,6 +608,14 @@ function shuffle(arr) {
   return a;
 }
 
+function insultFingerprint(i) {
+  return crypto.createHash('sha256').update(JSON.stringify(i)).digest('hex');
+}
+
+function isRetiredInsult(i) {
+  return INSULTS_REMOVED_HASHES.has(insultFingerprint(i));
+}
+
 async function setupInsultQueue() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS insult_submissions (
@@ -639,6 +651,22 @@ async function setupInsultQueue() {
   const state = rows[0];
   const acceptedInsults = await getAcceptedCommunityInsults();
   const allInsults = [...INSULTS, ...acceptedInsults];
+  const prunedQueue = state.queue.filter(i => !isRetiredInsult(i));
+  const prunedUsed = state.used.filter(i => !isRetiredInsult(i));
+  if (prunedQueue.length !== state.queue.length || prunedUsed.length !== state.used.length) {
+    const { rows: countRows } = await pool.query('SELECT counts FROM insult_state WHERE id = 1');
+    const counts = countRows[0]?.counts || {};
+    for (const key of Object.keys(counts)) {
+      if (isRetiredInsult(key)) delete counts[key];
+    }
+    await pool.query(
+      'UPDATE insult_state SET queue = $1, used = $2, counts = $3 WHERE id = 1',
+      [JSON.stringify(prunedQueue), JSON.stringify(prunedUsed), JSON.stringify(counts)]
+    );
+    state.queue = prunedQueue;
+    state.used = prunedUsed;
+    console.log('Removed retired insult(s) from queue state');
+  }
 
   // Seed last_*_date to today if null — prevents tonight's midnight run after the 9PM already fired
   if (!state.last_recap_date || !state.last_insult_date) {
@@ -712,7 +740,7 @@ async function getAcceptedCommunityInsults(clientOrPool = pool) {
   const { rows } = await clientOrPool.query(
     `SELECT content FROM insult_submissions WHERE status = 'accepted' ORDER BY submitted_at`
   );
-  return rows.map(r => r.content);
+  return rows.map(r => r.content).filter(i => !isRetiredInsult(i));
 }
 
 async function getAllActiveInsults(clientOrPool = pool) {
@@ -724,6 +752,11 @@ async function addCommunityInsult(content, submittedByUserId, submittedByName) {
   try {
     await client.query('BEGIN');
     const normalized = normalizeInsultSubmission(content);
+    if (isRetiredInsult(normalized)) {
+      const err = new Error('Retired insult submission');
+      err.code = '23505';
+      throw err;
+    }
     const stateResult = await client.query('SELECT queue, used, counts FROM insult_state WHERE id = 1 FOR UPDATE');
     const state = stateResult.rows[0];
     const allActive = await getAllActiveInsults(client);
