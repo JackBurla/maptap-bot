@@ -2,9 +2,21 @@
  * MapTap Discord Bot
  * npm install discord.js node-cron pg
  * Env vars: DISCORD_TOKEN, ANNOUNCE_CHANNEL_ID, DATABASE_URL (Railway provides this automatically)
+ * Optional env var: GUILD_ID (registers slash commands to one server immediately instead of globally)
  */
 
-const { Client, GatewayIntentBits, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const {
+  Client,
+  GatewayIntentBits,
+  EmbedBuilder,
+  AttachmentBuilder,
+  ActionRowBuilder,
+  ModalBuilder,
+  PermissionFlagsBits,
+  SlashCommandBuilder,
+  TextInputBuilder,
+  TextInputStyle
+} = require('discord.js');
 const path = require('path');
 const cron = require('node-cron');
 const { Pool } = require('pg');
@@ -12,6 +24,7 @@ const { Pool } = require('pg');
 const TOKEN               = process.env.DISCORD_TOKEN;
 const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID;
 const DATABASE_URL        = process.env.DATABASE_URL;
+const GUILD_ID            = process.env.GUILD_ID;
 
 if (!TOKEN)        throw new Error('Missing DISCORD_TOKEN');
 if (!ANNOUNCE_CHANNEL_ID) throw new Error('Missing ANNOUNCE_CHANNEL_ID');
@@ -71,6 +84,15 @@ function parsePost(content) {
     .filter(n => n >= 0 && n <= 100);
   const rounds = nums.slice(-5);
   return { score, rounds };
+}
+
+function normalizeInsultSubmission(content) {
+  return content.replace(/\r\n/g, '\n').trim();
+}
+
+function canManageQueue(interaction) {
+  return interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)
+    || interaction.memberPermissions?.has(PermissionFlagsBits.Administrator);
 }
 
 // ── Medal logic ───────────────────────────────────────────────────────────
@@ -169,6 +191,8 @@ async function getDunceLeaderboard() {
 const DAILY_MEDALS = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
 const MEDAL_NAMES  = ['gold', 'silver', 'bronze'];
 const DUNCE        = '<:Dunce:1492203597373636698>';
+const SUBMIT_INSULT_MODAL_ID = 'submit_insult_modal';
+const SUBMIT_INSULT_INPUT_ID = 'submit_insult_text';
 
 async function buildAnnouncement(dateStr) {
   const stats   = await getTodayStats(dateStr);
@@ -249,7 +273,36 @@ const client = new Client({
 
 client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
+  registerCommands().catch(err => console.error('Failed to register commands:', err));
 });
+
+async function registerCommands() {
+  const commands = [
+    new SlashCommandBuilder()
+      .setName('maptap')
+      .setDescription('Show the current MapTap recap'),
+    new SlashCommandBuilder()
+      .setName('mystats')
+      .setDescription('Show your personal MapTap stats'),
+    new SlashCommandBuilder()
+      .setName('submitinsult')
+      .setDescription('Privately submit an insult for the bot queue'),
+    new SlashCommandBuilder()
+      .setName('queuestate')
+      .setDescription('Show the insult queue state')
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  ].map(command => command.toJSON());
+
+  if (GUILD_ID) {
+    const guild = await client.guilds.fetch(GUILD_ID);
+    await guild.commands.set(commands);
+    console.log(`Registered commands for guild ${GUILD_ID}`);
+    return;
+  }
+
+  await client.application.commands.set(commands);
+  console.log('Registered global commands');
+}
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
@@ -383,11 +436,35 @@ async function getMyStats(userId) {
 }
 
 client.on('interactionCreate', async (interaction) => {
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId !== SUBMIT_INSULT_MODAL_ID) return;
+
+    const content = normalizeInsultSubmission(interaction.fields.getTextInputValue(SUBMIT_INSULT_INPUT_ID));
+    if (!content) {
+      await interaction.reply({ content: 'No insult submitted.', ephemeral: true });
+      return;
+    }
+
+    try {
+      await addCommunityInsult(content, interaction.user.id, interaction.user.username);
+      await interaction.reply({ content: 'Submitted. It will stay hidden until the bot uses it.', ephemeral: true });
+    } catch (err) {
+      if (err.code === '23505') {
+        await interaction.reply({ content: 'That one is already in the queue.', ephemeral: true });
+        return;
+      }
+      console.error('Failed to submit insult:', err);
+      await interaction.reply({ content: 'Could not save that submission.', ephemeral: true });
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === 'maptap') {
     await interaction.deferReply();
     await interaction.editReply({ embeds: [await buildAnnouncement(todayEST())] });
+    return;
   }
 
   if (interaction.commandName === 'mystats') {
@@ -412,10 +489,30 @@ client.on('interactionCreate', async (interaction) => {
         ...(stats.worstGuess ? [{ name: 'Worst Single Guess', value: `${stats.worstGuess.value} pts on ${formatDate(stats.worstGuess.date)}`, inline: true }] : []),
       );
     await interaction.editReply({ embeds: [embed] });
+    return;
+  }
+
+  if (interaction.commandName === 'submitinsult') {
+    const modal = new ModalBuilder()
+      .setCustomId(SUBMIT_INSULT_MODAL_ID)
+      .setTitle('Submit an Insult');
+    const input = new TextInputBuilder()
+      .setCustomId(SUBMIT_INSULT_INPUT_ID)
+      .setLabel('Insult')
+      .setStyle(TextInputStyle.Paragraph)
+      .setMaxLength(1800)
+      .setRequired(true);
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    await interaction.showModal(modal);
+    return;
   }
 
   if (interaction.commandName === 'queuestate') {
     await interaction.deferReply({ ephemeral: true });
+    if (!canManageQueue(interaction)) {
+      await interaction.editReply({ content: 'Only server managers can view the insult queue.' });
+      return;
+    }
     const { rows } = await pool.query('SELECT queue, used FROM insult_state WHERE id = 1');
     const { queue, used } = rows[0];
     const label = i => (typeof i === 'object' ? `[image: ${i.image}]` : i);
@@ -509,6 +606,17 @@ function shuffle(arr) {
 
 async function setupInsultQueue() {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS insult_submissions (
+      id                   SERIAL PRIMARY KEY,
+      content              TEXT NOT NULL UNIQUE,
+      submitted_by_user_id TEXT NOT NULL,
+      submitted_by_name    TEXT NOT NULL,
+      status               TEXT NOT NULL DEFAULT 'accepted',
+      submitted_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS insult_state (
       id               INTEGER PRIMARY KEY DEFAULT 1,
       queue            JSONB NOT NULL DEFAULT '[]',
@@ -529,6 +637,8 @@ async function setupInsultQueue() {
 
   const { rows } = await pool.query('SELECT queue, used, version, last_recap_date, last_insult_date FROM insult_state WHERE id = 1');
   const state = rows[0];
+  const acceptedInsults = await getAcceptedCommunityInsults();
+  const allInsults = [...INSULTS, ...acceptedInsults];
 
   // Seed last_*_date to today if null — prevents tonight's midnight run after the 9PM already fired
   if (!state.last_recap_date || !state.last_insult_date) {
@@ -542,7 +652,7 @@ async function setupInsultQueue() {
     // First boot or version mismatch — re-seed with correct data
     const usedSet = new Set(INSULTS_ALREADY_USED.map(i => JSON.stringify(i)));
     const FIRE_TONIGHT = "it is cooler to be here than get 1000 🧂";
-    const rest = shuffle(INSULTS.filter(i => !usedSet.has(JSON.stringify(i)) && i !== FIRE_TONIGHT));
+    const rest = shuffle(allInsults.filter(i => !usedSet.has(JSON.stringify(i)) && i !== FIRE_TONIGHT));
     const unused = [FIRE_TONIGHT, ...rest];
     // Seed fire counts from Discord scrape (Jun 2 2026)
     const seedCounts = {
@@ -582,7 +692,7 @@ async function setupInsultQueue() {
   } else {
     // Subsequent boots — append any brand-new insults to back of queue
     const known = new Set([...state.queue, ...state.used].map(i => JSON.stringify(i)));
-    const brandNew = shuffle(INSULTS.filter(i => !known.has(JSON.stringify(i))));
+    const brandNew = shuffle(allInsults.filter(i => !known.has(JSON.stringify(i))));
     if (brandNew.length > 0) {
       await pool.query(
         'UPDATE insult_state SET queue = $1 WHERE id = 1',
@@ -596,6 +706,62 @@ async function setupInsultQueue() {
 
 function insultKey(i) {
   return typeof i === 'object' ? `[image: ${i.image}]` : i;
+}
+
+async function getAcceptedCommunityInsults(clientOrPool = pool) {
+  const { rows } = await clientOrPool.query(
+    `SELECT content FROM insult_submissions WHERE status = 'accepted' ORDER BY submitted_at`
+  );
+  return rows.map(r => r.content);
+}
+
+async function getAllActiveInsults(clientOrPool = pool) {
+  return [...INSULTS, ...await getAcceptedCommunityInsults(clientOrPool)];
+}
+
+async function addCommunityInsult(content, submittedByUserId, submittedByName) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const normalized = normalizeInsultSubmission(content);
+    const stateResult = await client.query('SELECT queue, used, counts FROM insult_state WHERE id = 1 FOR UPDATE');
+    const state = stateResult.rows[0];
+    const allActive = await getAllActiveInsults(client);
+    const known = new Set([
+      ...allActive,
+      ...state.queue,
+      ...state.used
+    ].map(i => JSON.stringify(i)));
+
+    if (known.has(JSON.stringify(normalized))) {
+      const err = new Error('Duplicate insult submission');
+      err.code = '23505';
+      throw err;
+    }
+
+    await client.query(
+      `INSERT INTO insult_submissions (content, submitted_by_user_id, submitted_by_name)
+       VALUES ($1, $2, $3)`,
+      [normalized, submittedByUserId, submittedByName]
+    );
+
+    const queue = [...state.queue, normalized];
+    const counts = state.counts || {};
+    const key = insultKey(normalized);
+    if (counts[key] === undefined) counts[key] = 0;
+
+    await client.query(
+      'UPDATE insult_state SET queue = $1, counts = $2 WHERE id = 1',
+      [JSON.stringify(queue), JSON.stringify(counts)]
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // Shuffle within count tiers so lower-fired insults always go before higher-fired ones
@@ -615,7 +781,7 @@ async function pickInsult() {
   let { queue, used, version, counts } = rows[0];
 
   if (queue.length === 0) {
-    queue = buildCycleQueue(INSULTS, counts);
+    queue = buildCycleQueue(await getAllActiveInsults(), counts);
     used = [];
     console.log('Insult queue cycled — starting new round');
   }
@@ -655,7 +821,7 @@ cron.schedule('1 0 * * *', async () => {
       const file = new AttachmentBuilder(path.join(__dirname, 'insult-images', insult.image));
       await msg.reply({ files: [file] });
     } else {
-      await msg.reply(insult);
+      await msg.reply({ content: insult, allowedMentions: { parse: [] } });
     }
     await pool.query('UPDATE insult_state SET last_insult_date = $1 WHERE id = 1', [dateStr]);
     console.log(`Insulted ${loser.username}`);

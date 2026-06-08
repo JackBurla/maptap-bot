@@ -16,6 +16,7 @@ Discord bot for a friend group that plays [MapTap](https://maptap.gg) daily.
 - At **9:01 PM EST**: replies to the day's lowest scorer with an insult from the rotation
 - `/maptap` slash command: on-demand recap embed
 - `/mystats` slash command: personal stats (ephemeral)
+- `/submitinsult` slash command: opens a private modal for community insult submissions
 
 ---
 
@@ -24,7 +25,9 @@ Discord bot for a friend group that plays [MapTap](https://maptap.gg) daily.
 **How it works:**
 - Insults cycle in shuffled order — no repeats until all are exhausted, then reshuffles
 - State is stored in the `insult_state` Postgres table (one row: `queue`, `used`, `version`)
-- On each deploy, any **brand-new insults** (not in queue or used) are prepended to the front of the active queue so they show up soon
+- Community submissions are stored in `insult_submissions` and appended to the unused queue
+- Submitted insults are not echoed back into chat; they only appear when the bot eventually fires them
+- On each deploy, any **brand-new insults** (not in queue or used) are appended to the back of the active queue
 - `QUEUE_VERSION` constant controls re-seeding. **Bump it whenever the seed data needs to change** (e.g. correcting `INSULTS_ALREADY_USED`)
 
 **To add new insults:** just append to the `INSULTS` array and push — they'll be picked up on next restart automatically.
@@ -77,6 +80,7 @@ The user references insults by number from the **original 19-item list** (before
 
 - Hosted on **Railway** (free $5 credit tier — keep DB usage minimal)
 - Env vars required: `DISCORD_TOKEN`, `ANNOUNCE_CHANNEL_ID`, `DATABASE_URL`
+- Env var optional: `GUILD_ID` for immediate guild slash-command registration; without it commands register globally
 - Railway auto-deploys on push to `main`
 - DB is Postgres provided by Railway
 
@@ -88,3 +92,4 @@ The user references insults by number from the **original 19-item list** (before
 |---|---|
 | `scores` | One row per user per day. Stores score, rounds[], message_id, channel_id |
 | `insult_state` | Single row. `queue` JSONB, `used` JSONB, `version` INT |
+| `insult_submissions` | Community-submitted text insults, accepted by default |
