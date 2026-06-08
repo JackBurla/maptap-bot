@@ -515,7 +515,8 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
     const { rows } = await pool.query('SELECT queue, used FROM insult_state WHERE id = 1');
-    const { queue, used } = rows[0];
+    const queue = rows[0].queue.filter(i => !isRetiredInsult(i));
+    const used = rows[0].used.filter(i => !isRetiredInsult(i));
     const label = i => (typeof i === 'object' ? `[image: ${i.image}]` : i);
     const queueList = queue.map(label).join('\n') || '_empty_';
     const usedList  = used.map(label).join('\n')  || '_empty_';
@@ -812,6 +813,8 @@ function buildCycleQueue(insults, counts) {
 async function pickInsult() {
   const { rows } = await pool.query('SELECT queue, used, version, counts FROM insult_state WHERE id = 1');
   let { queue, used, version, counts } = rows[0];
+  queue = queue.filter(i => !isRetiredInsult(i));
+  used = used.filter(i => !isRetiredInsult(i));
 
   if (queue.length === 0) {
     queue = buildCycleQueue(await getAllActiveInsults(), counts);
