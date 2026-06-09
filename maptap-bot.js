@@ -96,6 +96,43 @@ function canManageQueue(interaction) {
     || interaction.memberPermissions?.has(PermissionFlagsBits.Administrator);
 }
 
+function formatInsultLabel(i) {
+  return typeof i === 'object' ? `[image: ${i.image}]` : i;
+}
+
+function formatQueueState(queue, used) {
+  const maxLength = 1900;
+  const lines = [
+    `**Queue (${queue.length} remaining):**`,
+    ...(queue.length ? queue.map(formatInsultLabel) : ['_empty_']),
+    '',
+    `**Used this cycle (${used.length}):**`,
+    ...(used.length ? used.map(formatInsultLabel) : ['_empty_'])
+  ];
+  return truncateLines(lines, maxLength);
+}
+
+function truncateLines(lines, maxLength) {
+  const visible = [];
+  let usedChars = 0;
+  for (const line of lines) {
+    const next = visible.length ? `\n${line}` : line;
+    if (usedChars + next.length > maxLength) break;
+    visible.push(line);
+    usedChars += next.length;
+  }
+
+  const omitted = lines.length - visible.length;
+  if (!omitted) return visible.join('\n');
+
+  const suffix = `\n...and ${omitted} more hidden for length`;
+  while (visible.length && usedChars + suffix.length > maxLength) {
+    const removed = visible.pop();
+    usedChars -= removed.length + (visible.length ? 1 : 0);
+  }
+  return `${visible.join('\n')}${suffix}`;
+}
+
 // ── Medal logic ───────────────────────────────────────────────────────────
 
 function assignMedals(sorted) {
@@ -440,22 +477,23 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.isModalSubmit()) {
     if (interaction.customId !== SUBMIT_INSULT_MODAL_ID) return;
 
+    await interaction.deferReply({ ephemeral: true });
     const content = normalizeInsultSubmission(interaction.fields.getTextInputValue(SUBMIT_INSULT_INPUT_ID));
     if (!content) {
-      await interaction.reply({ content: 'No insult submitted.', ephemeral: true });
+      await interaction.editReply({ content: 'No insult submitted.' });
       return;
     }
 
     try {
       await addCommunityInsult(content, interaction.user.id, interaction.user.username);
-      await interaction.reply({ content: 'Submitted. It will stay hidden until the bot uses it.', ephemeral: true });
+      await interaction.editReply({ content: 'Submitted. It will stay hidden until the bot uses it.' });
     } catch (err) {
       if (err.code === '23505') {
-        await interaction.reply({ content: 'That one is already in the queue.', ephemeral: true });
+        await interaction.editReply({ content: 'That one is already in the queue.' });
         return;
       }
       console.error('Failed to submit insult:', err);
-      await interaction.reply({ content: 'Could not save that submission.', ephemeral: true });
+      await interaction.editReply({ content: 'Could not save that submission.' });
     }
     return;
   }
@@ -517,12 +555,7 @@ client.on('interactionCreate', async (interaction) => {
     const { rows } = await pool.query('SELECT queue, used FROM insult_state WHERE id = 1');
     const queue = rows[0].queue.filter(i => !isRetiredInsult(i));
     const used = rows[0].used.filter(i => !isRetiredInsult(i));
-    const label = i => (typeof i === 'object' ? `[image: ${i.image}]` : i);
-    const queueList = queue.map(label).join('\n') || '_empty_';
-    const usedList  = used.map(label).join('\n')  || '_empty_';
-    await interaction.editReply({
-      content: `**Queue (${queue.length} remaining):**\n${queueList}\n\n**Used this cycle (${used.length}):**\n${usedList}`
-    });
+    await interaction.editReply({ content: formatQueueState(queue, used) });
   }
 });
 
@@ -811,29 +844,39 @@ function buildCycleQueue(insults, counts) {
 }
 
 async function pickInsult() {
-  const { rows } = await pool.query('SELECT queue, used, version, counts FROM insult_state WHERE id = 1');
-  let { queue, used, version, counts } = rows[0];
-  queue = queue.filter(i => !isRetiredInsult(i));
-  used = used.filter(i => !isRetiredInsult(i));
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN');
+    const { rows } = await db.query('SELECT queue, used, version, counts FROM insult_state WHERE id = 1 FOR UPDATE');
+    let { queue, used, version, counts } = rows[0];
+    queue = queue.filter(i => !isRetiredInsult(i));
+    used = used.filter(i => !isRetiredInsult(i));
 
-  if (queue.length === 0) {
-    queue = buildCycleQueue(await getAllActiveInsults(), counts);
-    used = [];
-    console.log('Insult queue cycled — starting new round');
+    if (queue.length === 0) {
+      queue = buildCycleQueue(await getAllActiveInsults(db), counts);
+      used = [];
+      console.log('Insult queue cycled — starting new round');
+    }
+
+    const insult = queue.shift();
+    used.push(insult);
+
+    const key = insultKey(insult);
+    counts[key] = (counts[key] || 0) + 1;
+
+    await db.query(
+      'UPDATE insult_state SET queue = $1, used = $2, version = $3, counts = $4 WHERE id = 1',
+      [JSON.stringify(queue), JSON.stringify(used), version, JSON.stringify(counts)]
+    );
+
+    await db.query('COMMIT');
+    return insult;
+  } catch (err) {
+    await db.query('ROLLBACK');
+    throw err;
+  } finally {
+    db.release();
   }
-
-  const insult = queue.shift();
-  used.push(insult);
-
-  const key = insultKey(insult);
-  counts[key] = (counts[key] || 0) + 1;
-
-  await pool.query(
-    'UPDATE insult_state SET queue = $1, used = $2, version = $3, counts = $4 WHERE id = 1',
-    [JSON.stringify(queue), JSON.stringify(used), version, JSON.stringify(counts)]
-  );
-
-  return insult;
 }
 
 cron.schedule('1 0 * * *', async () => {
