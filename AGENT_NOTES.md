@@ -17,6 +17,7 @@ Discord bot for a friend group that plays [MapTap](https://maptap.gg) daily.
 - `/maptap` slash command: on-demand recap embed
 - `/mystats` slash command: personal stats (ephemeral)
 - `/submitinsult` slash command: opens a private modal for community insult submissions
+- `/insultsubmissions` slash command: manager-only audit view of who submitted community insults
 
 ---
 
@@ -27,6 +28,7 @@ Discord bot for a friend group that plays [MapTap](https://maptap.gg) daily.
 - State is stored in the `insult_state` Postgres table (one row: `queue`, `used`, `version`)
 - Community submissions are stored in `insult_submissions` and appended to the unused queue
 - Submitted insults are not echoed back into chat; they only appear when the bot eventually fires them
+- Fired community insults are anonymous in chat, but server managers can audit submitters with `/insultsubmissions`
 - On each deploy, any **brand-new insults** (not in queue or used) are appended to the back of the active queue
 - `QUEUE_VERSION` constant controls re-seeding. **Bump it whenever the seed data needs to change** (e.g. correcting `INSULTS_ALREADY_USED`)
 

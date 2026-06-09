@@ -112,6 +112,23 @@ function formatQueueState(queue, used) {
   return truncateLines(lines, maxLength);
 }
 
+function formatSubmissionAudit(rows) {
+  const lines = [`**Community Submissions (${rows.length} shown):**`];
+  for (const row of rows) {
+    const submittedAt = new Date(row.submitted_at).toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+    lines.push(`${row.id}. **${row.submitted_by_name}** (${row.submitted_by_user_id}) - ${submittedAt}`);
+    lines.push(formatInsultLabel(row.content));
+  }
+  if (rows.length === 0) lines.push('_No community submissions yet_');
+  return truncateLines(lines, 1900);
+}
+
 function truncateLines(lines, maxLength) {
   const visible = [];
   let usedChars = 0;
@@ -328,6 +345,10 @@ async function registerCommands() {
     new SlashCommandBuilder()
       .setName('queuestate')
       .setDescription('Show the insult queue state')
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+    new SlashCommandBuilder()
+      .setName('insultsubmissions')
+      .setDescription('Show who submitted community insults')
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   ].map(command => command.toJSON());
 
@@ -556,6 +577,23 @@ client.on('interactionCreate', async (interaction) => {
     const queue = rows[0].queue.filter(i => !isRetiredInsult(i));
     const used = rows[0].used.filter(i => !isRetiredInsult(i));
     await interaction.editReply({ content: formatQueueState(queue, used) });
+    return;
+  }
+
+  if (interaction.commandName === 'insultsubmissions') {
+    await interaction.deferReply({ ephemeral: true });
+    if (!canManageQueue(interaction)) {
+      await interaction.editReply({ content: 'Only server managers can view insult submissions.' });
+      return;
+    }
+    const { rows } = await pool.query(
+      `SELECT id, content, submitted_by_user_id, submitted_by_name, submitted_at
+       FROM insult_submissions
+       WHERE status = 'accepted'
+       ORDER BY submitted_at DESC
+       LIMIT 25`
+    );
+    await interaction.editReply({ content: formatSubmissionAudit(rows) });
   }
 });
 
