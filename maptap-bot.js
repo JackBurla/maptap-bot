@@ -400,34 +400,41 @@ client.on('messageCreate', async (message) => {
     );
     if (today.length < 2) return;
 
-    const sorted   = today.slice().sort((a, b) => a.score - b.score);
-    const newDunce = sorted[0];
-    const newNerd  = sorted[sorted.length - 1];
+    const lowestScore = Math.min(...today.map(entry => entry.score));
+    const highestScore = Math.max(...today.map(entry => entry.score));
+    const newDunces = today.filter(entry => entry.score === lowestScore);
+    const newNerds = today.filter(entry => entry.score === highestScore);
+    const dunceMessageIds = new Set(newDunces.map(entry => entry.message_id));
+    const nerdMessageIds = new Set(newNerds.map(entry => entry.message_id));
 
     for (const entry of today) {
       try {
         const ch  = await client.channels.fetch(entry.channel_id);
         const msg = await ch.messages.fetch(entry.message_id);
-        if (entry.message_id !== newDunce.message_id) {
+        if (!dunceMessageIds.has(entry.message_id)) {
           const dunceReaction = [...msg.reactions.cache.values()].find(r => r.emoji.name === 'Dunce');
           if (dunceReaction) await dunceReaction.users.remove(client.user.id);
         }
-        if (entry.message_id !== newNerd.message_id) {
+        if (!nerdMessageIds.has(entry.message_id)) {
           const nerdReaction = [...msg.reactions.cache.values()].find(r => r.emoji.name === '🤓');
           if (nerdReaction) await nerdReaction.users.remove(client.user.id);
         }
       } catch {}
     }
-    try {
-      const ch  = await client.channels.fetch(newDunce.channel_id);
-      const msg = await ch.messages.fetch(newDunce.message_id);
-      await msg.react('Dunce:1492203597373636698');
-    } catch {}
-    try {
-      const ch  = await client.channels.fetch(newNerd.channel_id);
-      const msg = await ch.messages.fetch(newNerd.message_id);
-      await msg.react('🤓');
-    } catch {}
+    for (const newDunce of newDunces) {
+      try {
+        const ch  = await client.channels.fetch(newDunce.channel_id);
+        const msg = await ch.messages.fetch(newDunce.message_id);
+        await msg.react('Dunce:1492203597373636698');
+      } catch {}
+    }
+    for (const newNerd of newNerds) {
+      try {
+        const ch  = await client.channels.fetch(newNerd.channel_id);
+        const msg = await ch.messages.fetch(newNerd.message_id);
+        await msg.react('🤓');
+      } catch {}
+    }
 
   } catch (err) {
     console.error('Error saving score:', err);
