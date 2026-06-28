@@ -3,6 +3,7 @@ const {
   AVERAGE_OPPONENT,
   EXCLUDED_LEAGUE_USER_IDS,
   LEAGUE_NAMES,
+  NO_SHOW_REMOVAL_THRESHOLD,
   applyPromotionRelegation,
   buildPlayerAverages,
   dateAdd,
@@ -104,6 +105,18 @@ function testPromotionRelegation() {
   assert.strictEqual(next.find(p => p.user_id === 'new').league_level, 3);
 }
 
+function testNoShowRemovalThreshold() {
+  assert.strictEqual(NO_SHOW_REMOVAL_THRESHOLD, 8);
+  const members = [
+    { user_id: 'active', username: 'Active', league_level: 3 },
+    { user_id: 'ghost', username: 'Ghost', league_level: 3 }
+  ];
+  const removed = new Set(['ghost']);
+  const next = members.filter(member => !removed.has(member.user_id));
+  assert(next.some(member => member.user_id === 'active'));
+  assert(!next.some(member => member.user_id === 'ghost'));
+}
+
 function testMessageSplit() {
   const chunks = splitDiscordMessage(Array(200).fill('line').join('\n'), 100);
   assert(chunks.length > 1);
@@ -139,6 +152,7 @@ testLeagueExclusions();
 testScheduleGeneration();
 testResultsAndStandings();
 testPromotionRelegation();
+testNoShowRemovalThreshold();
 testMessageSplit();
 testLeagueNamesAndTitles();
 

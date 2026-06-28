@@ -7,6 +7,7 @@ const LEAGUE_NAMES = {
 const AVERAGE_OPPONENT = 'AVERAGE';
 const WIN_REACTION = '🇼';
 const LOSS_REACTION = '🇱';
+const NO_SHOW_REMOVAL_THRESHOLD = 8;
 const EXCLUDED_LEAGUE_USER_IDS = new Set([
   '175759734996074497', // pancake_guys
   '215273003888541696', // Djimmy / djimmy23
@@ -239,6 +240,16 @@ async function setupLeagueDB(pool) {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS league_exclusions (
+      user_id        TEXT PRIMARY KEY,
+      username       TEXT NOT NULL,
+      reason         TEXT NOT NULL,
+      season_id      INTEGER REFERENCES league_seasons(id) ON DELETE SET NULL,
+      no_show_count  INTEGER NOT NULL DEFAULT 0,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS league_state (
       id                    INTEGER PRIMARY KEY DEFAULT 1,
       last_finalized_date   TEXT,
@@ -273,7 +284,10 @@ async function loadPlayerAverages(pool, startDate) {
      ORDER BY date_str`,
     [startDate]
   );
-  return buildPlayerAverages(rows, startDate);
+  const players = buildPlayerAverages(rows, startDate);
+  const { rows: excludedRows } = await pool.query('SELECT user_id FROM league_exclusions');
+  const excluded = new Set(excludedRows.map(row => row.user_id));
+  return players.filter(player => !excluded.has(player.user_id));
 }
 
 async function insertSeason(pool, seasonNumber, startDate, memberships) {
@@ -378,6 +392,33 @@ async function recordLeagueTitles(pool, season) {
   }
 }
 
+async function recordNoShowExclusions(pool, season) {
+  const { rows } = await pool.query(
+    `SELECT r.user_id, m.username, COUNT(*)::int AS no_show_count
+     FROM league_results r
+     JOIN league_memberships m ON m.season_id = r.season_id AND m.user_id = r.user_id
+     WHERE r.season_id = $1
+       AND r.result_type IN ('no_show', 'double_no_show', 'forfeit_loss')
+     GROUP BY r.user_id, m.username
+     HAVING COUNT(*) >= $2`,
+    [season.id, NO_SHOW_REMOVAL_THRESHOLD]
+  );
+
+  for (const row of rows) {
+    await pool.query(
+      `INSERT INTO league_exclusions (user_id, username, reason, season_id, no_show_count)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id) DO UPDATE SET
+         username = EXCLUDED.username,
+         reason = EXCLUDED.reason,
+         season_id = EXCLUDED.season_id,
+         no_show_count = EXCLUDED.no_show_count`,
+      [row.user_id, row.username, 'season_no_show', season.id, row.no_show_count]
+    );
+  }
+  return rows;
+}
+
 async function createInitialSeason(pool, startDate) {
   const players = await loadPlayerAverages(pool, startDate);
   const memberships = seedInitialMemberships(players);
@@ -387,6 +428,8 @@ async function createInitialSeason(pool, startDate) {
 async function createNextSeason(pool, startDate, previousSeason) {
   const standings = await buildStandings(pool, previousSeason.id);
   await recordLeagueTitles(pool, previousSeason);
+  const removedForNoShows = await recordNoShowExclusions(pool, previousSeason);
+  const noShowRemovedIds = new Set(removedForNoShows.map(row => row.user_id));
   await pool.query('UPDATE league_seasons SET status = $1 WHERE id = $2', ['complete', previousSeason.id]);
   const { rows: previousMembers } = await pool.query(
     `SELECT user_id, username, league_level, seed_average::float AS seed_average
@@ -397,7 +440,8 @@ async function createNextSeason(pool, startDate, previousSeason) {
   const players = await loadPlayerAverages(pool, startDate);
   const known = new Set(previousMembers.map(member => member.user_id));
   const newPlayers = players.filter(player => !known.has(player.user_id));
-  const nextMemberships = applyPromotionRelegation(previousMembers, standings, newPlayers);
+  const eligiblePreviousMembers = previousMembers.filter(member => !noShowRemovedIds.has(member.user_id));
+  const nextMemberships = applyPromotionRelegation(eligiblePreviousMembers, standings, newPlayers);
 
   const latestByUser = new Map(players.map(player => [player.user_id, player]));
   for (const member of nextMemberships) {
@@ -909,6 +953,7 @@ module.exports = {
   EXCLUDED_LEAGUE_USER_IDS,
   LEAGUE_NAMES,
   LOSS_REACTION,
+  NO_SHOW_REMOVAL_THRESHOLD,
   SEASON_LENGTH_DAYS,
   WIN_REACTION,
   applyPromotionRelegation,
@@ -924,6 +969,7 @@ module.exports = {
   generateSeasonSchedule,
   getLeagueTitleTracker,
   rankStandings,
+  recordNoShowExclusions,
   recordLeagueTitles,
   resolveLiveHeadToHeadForScore,
   resultForScores,
