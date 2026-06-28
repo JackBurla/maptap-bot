@@ -21,6 +21,12 @@ const path = require('path');
 const crypto = require('crypto');
 const cron = require('node-cron');
 const { Pool } = require('pg');
+const {
+  buildDailyLeagueMessages,
+  ensureLeagueSeasonForDate,
+  resolveLiveHeadToHeadForScore,
+  setupLeagueDB
+} = require('./leagues');
 
 const TOKEN               = process.env.DISCORD_TOKEN;
 const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID;
@@ -51,6 +57,19 @@ async function setupDB() {
     )
   `);
   console.log('DB ready');
+}
+
+async function reactToLeagueTargets(targets) {
+  for (const target of targets) {
+    if (!target.channel_id || !target.message_id || !target.reaction) continue;
+    try {
+      const ch = await client.channels.fetch(target.channel_id);
+      const msg = await ch.messages.fetch(target.message_id);
+      await msg.react(target.reaction);
+    } catch (err) {
+      console.error('Failed to add league reaction:', err);
+    }
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -376,23 +395,24 @@ client.on('messageCreate', async (message) => {
   const username = message.member?.displayName ?? message.author.username;
 
   try {
-    await pool.query(
+    const insertResult = await pool.query(
       `INSERT INTO scores (user_id, username, score, rounds, date_str, channel_id, message_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (user_id, date_str) DO NOTHING`,
+       ON CONFLICT (user_id, date_str) DO NOTHING
+       RETURNING id`,
       [userId, username, score, rounds, dateStr, message.channel.id, message.id]
     );
-    const inserted = (await pool.query(
-      'SELECT id FROM scores WHERE user_id=$1 AND date_str=$2', [userId, dateStr]
-    )).rows[0];
 
-    if (!inserted) {
+    if (!insertResult.rows[0]) {
       message.react('❌').catch(() => {});
       return;
     }
 
     message.react('✅').catch(() => {});
     console.log(`Saved: ${username} -> ${score} on ${dateStr}`);
+    resolveLiveHeadToHeadForScore(pool, dateStr, userId)
+      .then(reactToLeagueTargets)
+      .catch(err => console.error('Failed to resolve league matchup:', err));
 
     // Update dunce cap + nerd crown
     const { rows: today } = await pool.query(
@@ -954,6 +974,31 @@ cron.schedule('1 0 * * *', async () => {
   }
 }, { timezone: 'America/New_York' });
 
+cron.schedule('1 0 * * *', async () => {
+  try {
+    const resultDate = yesterdayEST();
+    const scheduleDate = todayEST();
+    const { rows: stateRows } = await pool.query('SELECT last_league_post_date FROM league_state WHERE id = 1');
+    if (stateRows[0]?.last_league_post_date === resultDate) {
+      console.log(`League update already sent for ${resultDate}, skipping`);
+      return;
+    }
+
+    const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
+    if (!channel?.isTextBased()) return;
+
+    const { messages, reactionTargets } = await buildDailyLeagueMessages(pool, resultDate, scheduleDate);
+    for (const content of messages) {
+      await channel.send({ content, allowedMentions: { parse: [] } });
+    }
+    await reactToLeagueTargets(reactionTargets);
+    await pool.query('UPDATE league_state SET last_league_post_date = $1 WHERE id = 1', [resultDate]);
+    console.log('League update sent');
+  } catch (err) {
+    console.error('Failed to send league update:', err);
+  }
+}, { timezone: 'America/New_York' });
+
 cron.schedule('0 0 * * *', async () => {
   try {
     const dateStr = yesterdayEST();
@@ -974,4 +1019,6 @@ cron.schedule('0 0 * * *', async () => {
 
 setupDB()
   .then(() => setupInsultQueue())
+  .then(() => setupLeagueDB(pool))
+  .then(() => ensureLeagueSeasonForDate(pool, todayEST()))
   .then(() => client.login(TOKEN));
