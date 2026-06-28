@@ -22,6 +22,7 @@ const crypto = require('crypto');
 const cron = require('node-cron');
 const { Pool } = require('pg');
 const {
+  buildCurrentLeagueMessages,
   buildDailyLeagueMessages,
   ensureLeagueSeasonForDate,
   resolveLiveHeadToHeadForScore,
@@ -69,6 +70,30 @@ async function reactToLeagueTargets(targets) {
     } catch (err) {
       console.error('Failed to add league reaction:', err);
     }
+  }
+}
+
+async function replyWithLeagueMessages(interaction, messages, postPublicly) {
+  if (!messages.length) {
+    await interaction.editReply({ content: 'No league season found yet.' });
+    return;
+  }
+
+  if (postPublicly) {
+    if (!interaction.channel?.isTextBased()) {
+      await interaction.editReply({ content: 'Could not find a text channel to post in.' });
+      return;
+    }
+    for (const content of messages) {
+      await interaction.channel.send({ content, allowedMentions: { parse: [] } });
+    }
+    await interaction.editReply({ content: 'Posted league state.' });
+    return;
+  }
+
+  await interaction.editReply({ content: messages[0], allowedMentions: { parse: [] } });
+  for (const content of messages.slice(1)) {
+    await interaction.followUp({ content, ephemeral: true, allowedMentions: { parse: [] } });
   }
 }
 
@@ -362,6 +387,14 @@ async function registerCommands() {
       .setName('submitinsult')
       .setDescription('Privately submit an insult for the bot queue'),
     new SlashCommandBuilder()
+      .setName('leagues')
+      .setDescription('Show current MapTap league tables and schedule')
+      .addBooleanOption(option =>
+        option
+          .setName('post')
+          .setDescription('Post publicly in this channel (server managers only)')
+      ),
+    new SlashCommandBuilder()
       .setName('queuestate')
       .setDescription('Show the insult queue state')
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
@@ -576,6 +609,24 @@ client.on('interactionCreate', async (interaction) => {
         ...(stats.worstGuess ? [{ name: 'Worst Single Guess', value: `${stats.worstGuess.value} pts on ${formatDate(stats.worstGuess.date)}`, inline: true }] : []),
       );
     await interaction.editReply({ embeds: [embed] });
+    return;
+  }
+
+  if (interaction.commandName === 'leagues') {
+    const postPublicly = interaction.options.getBoolean('post') || false;
+    await interaction.deferReply({ ephemeral: true });
+    if (postPublicly && !canManageQueue(interaction)) {
+      await interaction.editReply({ content: 'Only server managers can post the league state publicly.' });
+      return;
+    }
+
+    try {
+      const { messages } = await buildCurrentLeagueMessages(pool, todayEST());
+      await replyWithLeagueMessages(interaction, messages, postPublicly);
+    } catch (err) {
+      console.error('Failed to show leagues:', err);
+      await interaction.editReply({ content: 'Could not load league state.' });
+    }
     return;
   }
 

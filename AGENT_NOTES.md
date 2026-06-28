@@ -107,6 +107,7 @@ The user references insults by number from the **original 19-item list** (before
 - Implemented in `leagues.js`; keep pure scheduling/standings helpers there when possible.
 - Division display names are `League Tism`, `League Mid`, and `League Dunce`.
 - League updates are separate plain-text Discord messages and do not change the medal recap.
+- `/leagues` shows the current league state ephemerally; `/leagues post:true` posts it publicly for server managers.
 - Seasons last 10 days. Initial League 1/2 seeding uses top historical averages among players with 10+ games in the prior 30 days; everyone else starts in League 3.
 - Future season rollover promotes/relegates one player between adjacent divisions and adds new players to League 3.
 - Completed-season champions are stored in `league_titles` and shown in the daily league message.

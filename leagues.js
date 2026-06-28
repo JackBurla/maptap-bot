@@ -881,6 +881,24 @@ async function buildDailyLeagueMessages(pool, resultDate, scheduleDate) {
   };
 }
 
+async function buildCurrentLeagueMessages(pool, dateStr) {
+  const scheduleInfo = await getScheduleForDate(pool, dateStr);
+  const season = scheduleInfo.season;
+  if (!season) return { messages: [] };
+  const standings = await buildStandings(pool, season.id);
+  const titles = await getLeagueTitleTracker(pool);
+  const results = await getLeagueResultsForDate(pool, season.id, dateStr);
+  const text = formatLeagueUpdate({
+    dateStr,
+    results,
+    standings,
+    titles,
+    scheduleDate: dateStr,
+    schedule: scheduleInfo.schedule || []
+  });
+  return { messages: splitDiscordMessage(text) };
+}
+
 module.exports = {
   AVERAGE_OPPONENT,
   LEAGUE_NAMES,
@@ -888,6 +906,7 @@ module.exports = {
   SEASON_LENGTH_DAYS,
   WIN_REACTION,
   applyPromotionRelegation,
+  buildCurrentLeagueMessages,
   buildDailyLeagueMessages,
   buildPlayerAverages,
   buildStandings,
