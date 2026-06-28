@@ -2,6 +2,7 @@ const assert = require('assert');
 const {
   AVERAGE_OPPONENT,
   EXCLUDED_LEAGUE_USER_IDS,
+  LEAGUE_LAUNCH_DATE,
   LEAGUE_NAMES,
   NO_SHOW_REMOVAL_THRESHOLD,
   applyPromotionRelegation,
@@ -124,6 +125,7 @@ function testMessageSplit() {
 }
 
 function testLeagueNamesAndTitles() {
+  assert.strictEqual(LEAGUE_LAUNCH_DATE, '2026-06-29');
   assert.strictEqual(LEAGUE_NAMES[1], 'League Tism');
   assert.strictEqual(LEAGUE_NAMES[2], 'League Mid');
   assert.strictEqual(LEAGUE_NAMES[3], 'League Dunce');

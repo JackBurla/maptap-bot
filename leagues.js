@@ -1,4 +1,5 @@
 const SEASON_LENGTH_DAYS = 10;
+const LEAGUE_LAUNCH_DATE = '2026-06-29';
 const LEAGUE_NAMES = {
   1: 'League Tism',
   2: 'League Mid',
@@ -455,6 +456,8 @@ async function createNextSeason(pool, startDate, previousSeason) {
 }
 
 async function ensureLeagueSeasonForDate(pool, dateStr) {
+  if (compareDate(dateStr, LEAGUE_LAUNCH_DATE) < 0) return null;
+
   const existing = await getSeasonForDate(pool, dateStr);
   if (existing) return existing;
 
@@ -517,6 +520,7 @@ function reactionForResult(result) {
 
 async function resolveLiveHeadToHeadForScore(pool, dateStr, userId) {
   const season = await ensureLeagueSeasonForDate(pool, dateStr);
+  if (!season) return [];
   const { rows } = await pool.query(
     `SELECT * FROM league_matchups
      WHERE season_id = $1 AND date_str = $2 AND user_id = $3 AND opponent_type = 'USER'
@@ -794,6 +798,7 @@ async function getLeagueTitleTracker(pool) {
 
 async function getScheduleForDate(pool, dateStr) {
   const season = await ensureLeagueSeasonForDate(pool, dateStr);
+  if (!season) return { season: null, schedule: [] };
   const { rows } = await pool.query(
     `SELECT lm.*, m.username, om.username AS opponent_username
      FROM league_matchups lm
@@ -931,18 +936,19 @@ async function buildDailyLeagueMessages(pool, resultDate, scheduleDate) {
 }
 
 async function buildCurrentLeagueMessages(pool, dateStr) {
-  const scheduleInfo = await getScheduleForDate(pool, dateStr);
+  const viewDate = compareDate(dateStr, LEAGUE_LAUNCH_DATE) < 0 ? LEAGUE_LAUNCH_DATE : dateStr;
+  const scheduleInfo = await getScheduleForDate(pool, viewDate);
   const season = scheduleInfo.season;
   if (!season) return { messages: [] };
   const standings = await buildStandings(pool, season.id);
   const titles = await getLeagueTitleTracker(pool);
   const results = await getLeagueResultsForDate(pool, season.id, dateStr);
   const text = formatLeagueUpdate({
-    dateStr,
+    dateStr: viewDate,
     results,
     standings,
     titles,
-    scheduleDate: dateStr,
+    scheduleDate: viewDate,
     schedule: scheduleInfo.schedule || []
   });
   return { messages: splitDiscordMessage(text) };
@@ -951,6 +957,7 @@ async function buildCurrentLeagueMessages(pool, dateStr) {
 module.exports = {
   AVERAGE_OPPONENT,
   EXCLUDED_LEAGUE_USER_IDS,
+  LEAGUE_LAUNCH_DATE,
   LEAGUE_NAMES,
   LOSS_REACTION,
   NO_SHOW_REMOVAL_THRESHOLD,
