@@ -7,7 +7,7 @@ const LEAGUE_NAMES = {
 const AVERAGE_OPPONENT = 'AVERAGE';
 const WIN_REACTION = '🇼';
 const LOSS_REACTION = '🇱';
-const NO_SHOW_REMOVAL_THRESHOLD = 8;
+const NO_SHOW_REMOVAL_THRESHOLD = 7;
 const EXCLUDED_LEAGUE_USER_IDS = new Set([
   '175759734996074497', // pancake_guys
   '215273003888541696', // Djimmy / djimmy23

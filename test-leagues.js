@@ -106,7 +106,7 @@ function testPromotionRelegation() {
 }
 
 function testNoShowRemovalThreshold() {
-  assert.strictEqual(NO_SHOW_REMOVAL_THRESHOLD, 8);
+  assert.strictEqual(NO_SHOW_REMOVAL_THRESHOLD, 7);
   const members = [
     { user_id: 'active', username: 'Active', league_level: 3 },
     { user_id: 'ghost', username: 'Ghost', league_level: 3 }
