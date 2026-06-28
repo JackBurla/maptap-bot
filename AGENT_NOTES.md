@@ -99,12 +99,15 @@ The user references insults by number from the **original 19-item list** (before
 | `league_memberships` | Player division assignments per season |
 | `league_matchups` | Scheduled head-to-head or league-average matchups |
 | `league_results` | W/L/T, football points, and point differential |
+| `league_titles` | Completed-season league champions |
 | `league_state` | League cron idempotency guards |
 
 ## League system
 
 - Implemented in `leagues.js`; keep pure scheduling/standings helpers there when possible.
+- Division display names are `League Tism`, `League Mid`, and `League Dunce`.
 - League updates are separate plain-text Discord messages and do not change the medal recap.
 - Seasons last 10 days. Initial League 1/2 seeding uses top historical averages among players with 10+ games in the prior 30 days; everyone else starts in League 3.
 - Future season rollover promotes/relegates one player between adjacent divisions and adds new players to League 3.
+- Completed-season champions are stored in `league_titles` and shown in the daily league message.
 - Live W/L reactions only happen for completed head-to-head matchups. Average matchups and forfeits finalize at the 12:01 AM league cron.

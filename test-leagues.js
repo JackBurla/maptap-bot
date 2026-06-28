@@ -1,9 +1,12 @@
 const assert = require('assert');
 const {
   AVERAGE_OPPONENT,
+  LEAGUE_NAMES,
   applyPromotionRelegation,
   buildPlayerAverages,
   dateAdd,
+  formatLeagueUpdate,
+  formatTitleTracker,
   generateSeasonSchedule,
   rankStandings,
   resultForScores,
@@ -96,10 +99,35 @@ function testMessageSplit() {
   assert(chunks.every(chunk => chunk.length <= 100));
 }
 
+function testLeagueNamesAndTitles() {
+  assert.strictEqual(LEAGUE_NAMES[1], 'League Tism');
+  assert.strictEqual(LEAGUE_NAMES[2], 'League Mid');
+  assert.strictEqual(LEAGUE_NAMES[3], 'League Dunce');
+
+  const titleLines = formatTitleTracker({
+    1: [{ username: 'A', titles: 2 }],
+    2: [{ username: 'B', titles: 1 }],
+    3: [{ username: 'C', titles: 1 }]
+  });
+  assert(titleLines.includes('League Tism: A x2'));
+
+  const message = formatLeagueUpdate({
+    dateStr: '2026-06-01',
+    results: [],
+    standings: {},
+    titles: { 1: [{ username: 'A', titles: 2 }] },
+    scheduleDate: '2026-06-02',
+    schedule: []
+  });
+  assert(message.includes('**Titles**'));
+  assert(message.includes('League Tism: A x2'));
+}
+
 testInitialSeeding();
 testScheduleGeneration();
 testResultsAndStandings();
 testPromotionRelegation();
 testMessageSplit();
+testLeagueNamesAndTitles();
 
 console.log('league tests passed');

@@ -1,8 +1,8 @@
 const SEASON_LENGTH_DAYS = 10;
 const LEAGUE_NAMES = {
-  1: 'Premier League',
-  2: 'Championship',
-  3: 'League One'
+  1: 'League Tism',
+  2: 'League Mid',
+  3: 'League Dunce'
 };
 const AVERAGE_OPPONENT = 'AVERAGE';
 const WIN_REACTION = '🇼';
@@ -220,6 +220,20 @@ async function setupLeagueDB(pool) {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS league_titles (
+      id             SERIAL PRIMARY KEY,
+      season_id      INTEGER NOT NULL REFERENCES league_seasons(id) ON DELETE CASCADE,
+      season_number  INTEGER NOT NULL,
+      league_level   INTEGER NOT NULL,
+      user_id        TEXT NOT NULL,
+      username       TEXT NOT NULL,
+      points         INTEGER NOT NULL,
+      point_diff     NUMERIC NOT NULL DEFAULT 0,
+      awarded_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(season_id, league_level)
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS league_state (
       id                    INTEGER PRIMARY KEY DEFAULT 1,
       last_finalized_date   TEXT,
@@ -331,6 +345,34 @@ async function buildStandings(pool, seasonId) {
   return byLeague;
 }
 
+async function recordLeagueTitles(pool, season) {
+  const standings = await buildStandings(pool, season.id);
+  for (const level of [1, 2, 3]) {
+    const champion = standings[level]?.[0];
+    if (!champion) continue;
+    await pool.query(
+      `INSERT INTO league_titles (
+         season_id, season_number, league_level, user_id, username, points, point_diff
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (season_id, league_level) DO UPDATE SET
+         user_id = EXCLUDED.user_id,
+         username = EXCLUDED.username,
+         points = EXCLUDED.points,
+         point_diff = EXCLUDED.point_diff`,
+      [
+        season.id,
+        season.season_number,
+        level,
+        champion.user_id,
+        champion.username,
+        champion.points,
+        champion.point_diff
+      ]
+    );
+  }
+}
+
 async function createInitialSeason(pool, startDate) {
   const players = await loadPlayerAverages(pool, startDate);
   const memberships = seedInitialMemberships(players);
@@ -338,8 +380,9 @@ async function createInitialSeason(pool, startDate) {
 }
 
 async function createNextSeason(pool, startDate, previousSeason) {
-  await pool.query('UPDATE league_seasons SET status = $1 WHERE id = $2', ['complete', previousSeason.id]);
   const standings = await buildStandings(pool, previousSeason.id);
+  await recordLeagueTitles(pool, previousSeason);
+  await pool.query('UPDATE league_seasons SET status = $1 WHERE id = $2', ['complete', previousSeason.id]);
   const { rows: previousMembers } = await pool.query(
     `SELECT user_id, username, league_level, seed_average::float AS seed_average
      FROM league_memberships
@@ -685,6 +728,21 @@ async function getLeagueResultsForDate(pool, seasonId, dateStr) {
   return rows;
 }
 
+async function getLeagueTitleTracker(pool) {
+  const { rows } = await pool.query(
+    `SELECT league_level, user_id, username, COUNT(*)::int AS titles
+     FROM league_titles
+     GROUP BY league_level, user_id, username
+     ORDER BY league_level ASC, titles DESC, username ASC`
+  );
+  const byLeague = {};
+  for (const row of rows) {
+    if (!byLeague[row.league_level]) byLeague[row.league_level] = [];
+    byLeague[row.league_level].push(row);
+  }
+  return byLeague;
+}
+
 async function getScheduleForDate(pool, dateStr) {
   const season = await ensureLeagueSeasonForDate(pool, dateStr);
   const { rows } = await pool.query(
@@ -711,7 +769,21 @@ function formatScore(value) {
   return Number.isInteger(n) ? n.toLocaleString() : n.toFixed(1);
 }
 
-function formatLeagueUpdate({ dateStr, results, standings, scheduleDate, schedule }) {
+function formatTitleTracker(titles) {
+  const lines = [];
+  for (const level of [1, 2, 3]) {
+    const leagueTitles = titles[level] || [];
+    if (!leagueTitles.length) continue;
+    const leaders = leagueTitles
+      .slice(0, 3)
+      .map(row => `${row.username} x${row.titles}`)
+      .join(', ');
+    lines.push(`${LEAGUE_NAMES[level]}: ${leaders}`);
+  }
+  return lines;
+}
+
+function formatLeagueUpdate({ dateStr, results, standings, titles, scheduleDate, schedule }) {
   const sections = [`**MapTap Leagues - ${dateStr}**`];
 
   sections.push('**Results**');
@@ -744,6 +816,11 @@ function formatLeagueUpdate({ dateStr, results, standings, scheduleDate, schedul
       sections.push(`${row.points} pts | ${formatRecord(row)} | ${formatPointDiff(row.point_diff)} | ${row.username}`);
     }
   }
+
+  sections.push('', '**Titles**');
+  const titleLines = formatTitleTracker(titles || {});
+  if (titleLines.length) sections.push(...titleLines);
+  else sections.push('_No league titles awarded yet._');
 
   sections.push('', `**Schedule - ${scheduleDate}**`);
   for (const level of [1, 2, 3]) {
@@ -786,13 +863,15 @@ function splitDiscordMessage(text, maxLength = 1900) {
 async function buildDailyLeagueMessages(pool, resultDate, scheduleDate) {
   const finalized = await finalizeLeagueDate(pool, resultDate);
   const scheduleInfo = await getScheduleForDate(pool, scheduleDate);
-  const season = scheduleInfo.season || finalized.season;
-  if (!season) return { messages: [], reactionTargets: [] };
-  const standings = await buildStandings(pool, season.id);
+  const standingsSeason = finalized.season || scheduleInfo.season;
+  if (!standingsSeason) return { messages: [], reactionTargets: [] };
+  const standings = await buildStandings(pool, standingsSeason.id);
+  const titles = await getLeagueTitleTracker(pool);
   const text = formatLeagueUpdate({
     dateStr: resultDate,
     results: finalized.results || [],
     standings,
+    titles,
     scheduleDate,
     schedule: scheduleInfo.schedule || []
   });
@@ -816,8 +895,11 @@ module.exports = {
   ensureLeagueSeasonForDate,
   finalizeLeagueDate,
   formatLeagueUpdate,
+  formatTitleTracker,
   generateSeasonSchedule,
+  getLeagueTitleTracker,
   rankStandings,
+  recordLeagueTitles,
   resolveLiveHeadToHeadForScore,
   resultForScores,
   seedInitialMemberships,
