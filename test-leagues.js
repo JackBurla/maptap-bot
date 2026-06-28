@@ -1,6 +1,7 @@
 const assert = require('assert');
 const {
   AVERAGE_OPPONENT,
+  EXCLUDED_LEAGUE_USER_IDS,
   LEAGUE_NAMES,
   applyPromotionRelegation,
   buildPlayerAverages,
@@ -34,6 +35,16 @@ function testInitialSeeding() {
   assert.strictEqual(seeded.filter(p => p.league_level === 1).length, 5);
   assert.strictEqual(seeded.filter(p => p.league_level === 2).length, 5);
   assert.strictEqual(seeded.find(p => p.user_id === 'newbie').league_level, 3);
+}
+
+function testLeagueExclusions() {
+  const excludedId = [...EXCLUDED_LEAGUE_USER_IDS][0];
+  const players = buildPlayerAverages([
+    ...scoreRows(excludedId, 'Excluded', Array(10).fill(900), '2026-05-15'),
+    ...scoreRows('active', 'Active', Array(10).fill(800), '2026-05-15')
+  ], '2026-06-01');
+  assert(!players.some(player => player.user_id === excludedId));
+  assert(players.some(player => player.user_id === 'active'));
 }
 
 function testScheduleGeneration() {
@@ -124,6 +135,7 @@ function testLeagueNamesAndTitles() {
 }
 
 testInitialSeeding();
+testLeagueExclusions();
 testScheduleGeneration();
 testResultsAndStandings();
 testPromotionRelegation();

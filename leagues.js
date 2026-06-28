@@ -7,6 +7,11 @@ const LEAGUE_NAMES = {
 const AVERAGE_OPPONENT = 'AVERAGE';
 const WIN_REACTION = '🇼';
 const LOSS_REACTION = '🇱';
+const EXCLUDED_LEAGUE_USER_IDS = new Set([
+  '175759734996074497', // pancake_guys
+  '215273003888541696', // Djimmy / djimmy23
+  '175757349284347904'  // admiral_stupid
+]);
 
 function dateAdd(dateStr, days) {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -41,7 +46,7 @@ function buildPlayerAverages(scores, startDate) {
   }
 
   const cutoff = dateAdd(startDate, -30);
-  return [...byUser.entries()].map(([userId, rows]) => {
+  return [...byUser.entries()].filter(([userId]) => !EXCLUDED_LEAGUE_USER_IDS.has(userId)).map(([userId, rows]) => {
     const total = rows.reduce((sum, row) => sum + Number(row.score), 0);
     const last30Games = rows.filter(row => compareDate(row.date_str, cutoff) >= 0).length;
     return {
@@ -901,6 +906,7 @@ async function buildCurrentLeagueMessages(pool, dateStr) {
 
 module.exports = {
   AVERAGE_OPPONENT,
+  EXCLUDED_LEAGUE_USER_IDS,
   LEAGUE_NAMES,
   LOSS_REACTION,
   SEASON_LENGTH_DAYS,
