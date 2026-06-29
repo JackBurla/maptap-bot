@@ -115,3 +115,4 @@ The user references insults by number from the **original 19-item list** (before
 - Players with 7+ no-shows in a 10-day season are recorded in `league_exclusions` and left out of future seasons.
 - Completed-season champions are stored in `league_titles` and shown in the daily league message.
 - Live W/L reactions only happen for completed head-to-head matchups. Average matchups and forfeits finalize at the 12:01 AM league cron.
+- Average-matchup W/L reactions can also happen live once the average player and every other player in that league has submitted.

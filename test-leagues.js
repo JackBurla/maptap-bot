@@ -12,6 +12,7 @@ const {
   formatTitleTracker,
   generateSeasonSchedule,
   rankStandings,
+  resolveLiveAverageMatchupsForScore,
   resultForScores,
   seedInitialMemberships,
   splitDiscordMessage
@@ -149,6 +150,10 @@ function testLeagueNamesAndTitles() {
   assert(message.includes('League Tism: A x2'));
 }
 
+function testLiveAverageResolverExport() {
+  assert.strictEqual(typeof resolveLiveAverageMatchupsForScore, 'function');
+}
+
 testInitialSeeding();
 testLeagueExclusions();
 testScheduleGeneration();
@@ -157,5 +162,6 @@ testPromotionRelegation();
 testNoShowRemovalThreshold();
 testMessageSplit();
 testLeagueNamesAndTitles();
+testLiveAverageResolverExport();
 
 console.log('league tests passed');

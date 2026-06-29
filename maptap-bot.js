@@ -25,6 +25,7 @@ const {
   buildCurrentLeagueMessages,
   buildDailyLeagueMessages,
   ensureLeagueSeasonForDate,
+  resolveLiveAverageMatchupsForScore,
   resolveLiveHeadToHeadForScore,
   setupLeagueDB
 } = require('./leagues');
@@ -443,7 +444,11 @@ client.on('messageCreate', async (message) => {
 
     message.react('✅').catch(() => {});
     console.log(`Saved: ${username} -> ${score} on ${dateStr}`);
-    resolveLiveHeadToHeadForScore(pool, dateStr, userId)
+    Promise.all([
+      resolveLiveHeadToHeadForScore(pool, dateStr, userId),
+      resolveLiveAverageMatchupsForScore(pool, dateStr, userId)
+    ])
+      .then(results => results.flat())
       .then(reactToLeagueTargets)
       .catch(err => console.error('Failed to resolve league matchup:', err));
 

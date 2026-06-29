@@ -579,6 +579,77 @@ async function resolveLiveHeadToHeadForScore(pool, dateStr, userId) {
   ].filter(row => row.reaction);
 }
 
+async function resolveLiveAverageMatchupsForScore(pool, dateStr, userId) {
+  const season = await ensureLeagueSeasonForDate(pool, dateStr);
+  if (!season) return [];
+
+  const { rows: memberships } = await pool.query(
+    `SELECT league_level
+     FROM league_memberships
+     WHERE season_id = $1 AND user_id = $2
+     LIMIT 1`,
+    [season.id, userId]
+  );
+  const membership = memberships[0];
+  if (!membership) return [];
+
+  const { rows: averageMatchups } = await pool.query(
+    `SELECT *
+     FROM league_matchups
+     WHERE season_id = $1 AND date_str = $2 AND league_level = $3 AND opponent_type = $4`,
+    [season.id, dateStr, membership.league_level, AVERAGE_OPPONENT]
+  );
+  if (!averageMatchups.length) return [];
+
+  const scoreMap = await getScoreMap(pool, dateStr);
+  const reactionTargets = [];
+
+  for (const matchup of averageMatchups) {
+    const averagePlayerScore = scoreMap.get(matchup.user_id);
+    if (!averagePlayerScore) continue;
+
+    const { rows: existing } = await pool.query(
+      `SELECT id FROM league_results
+       WHERE season_id = $1 AND date_str = $2 AND user_id = $3`,
+      [season.id, dateStr, matchup.user_id]
+    );
+    if (existing.length) continue;
+
+    const { rows: leagueUsers } = await pool.query(
+      `SELECT user_id
+       FROM league_matchups
+       WHERE season_id = $1 AND date_str = $2 AND league_level = $3 AND user_id <> $4`,
+      [season.id, dateStr, matchup.league_level, matchup.user_id]
+    );
+    const allOthersScored = leagueUsers.every(row => scoreMap.has(row.user_id));
+    if (!allOthersScored) continue;
+
+    const leagueScoreRows = leagueUsers.map(row => scoreMap.get(row.user_id));
+    if (!leagueScoreRows.length) continue;
+
+    const opponentAverage = leagueScoreRows.reduce((sum, row) => sum + Number(row.score), 0) / leagueScoreRows.length;
+    const resolved = resultForScores(Number(averagePlayerScore.score), opponentAverage);
+    await upsertResult(pool, {
+      season_id: season.id,
+      date_str: dateStr,
+      league_level: matchup.league_level,
+      user_id: matchup.user_id,
+      opponent_user_id: null,
+      opponent_type: AVERAGE_OPPONENT,
+      result: resolved.result,
+      league_points: resolved.points,
+      score: Number(averagePlayerScore.score),
+      opponent_score: opponentAverage,
+      point_diff: resolved.point_diff,
+      result_type: 'average'
+    });
+    const reaction = reactionForResult(resolved.result);
+    if (reaction) reactionTargets.push({ ...averagePlayerScore, reaction });
+  }
+
+  return reactionTargets;
+}
+
 async function finalizeLeagueDate(pool, dateStr) {
   const season = await getSeasonForDate(pool, dateStr);
   if (!season) return { season: null, results: [] };
@@ -979,6 +1050,7 @@ module.exports = {
   recordNoShowExclusions,
   recordLeagueTitles,
   resolveLiveHeadToHeadForScore,
+  resolveLiveAverageMatchupsForScore,
   resultForScores,
   seedInitialMemberships,
   setupLeagueDB,
