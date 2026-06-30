@@ -167,6 +167,16 @@ function canManageQueue(interaction) {
     || interaction.memberPermissions?.has(PermissionFlagsBits.Administrator);
 }
 
+function botHasReaction(msg, emojiName) {
+  const reaction = [...msg.reactions.cache.values()].find(r => r.emoji.name === emojiName);
+  return reaction?.me || false;
+}
+
+async function reactIfMissing(msg, emojiName, reactValue) {
+  if (botHasReaction(msg, emojiName)) return;
+  await msg.react(reactValue);
+}
+
 function formatInsultLabel(i) {
   return typeof i === 'object' ? `[image: ${i.image}]` : i;
 }
@@ -511,14 +521,14 @@ client.on('messageCreate', async (message) => {
       try {
         const ch  = await client.channels.fetch(newDunce.channel_id);
         const msg = await ch.messages.fetch(newDunce.message_id);
-        await msg.react('Dunce:1492203597373636698');
+        await reactIfMissing(msg, 'Dunce', 'Dunce:1492203597373636698');
       } catch {}
     }
     for (const newNerd of newNerds) {
       try {
         const ch  = await client.channels.fetch(newNerd.channel_id);
         const msg = await ch.messages.fetch(newNerd.message_id);
-        await msg.react('🤓');
+        await reactIfMissing(msg, '🤓', '🤓');
       } catch {}
     }
 
