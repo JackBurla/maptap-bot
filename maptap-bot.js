@@ -34,6 +34,9 @@ const TOKEN               = process.env.DISCORD_TOKEN;
 const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID;
 const DATABASE_URL        = process.env.DATABASE_URL;
 const GUILD_ID            = process.env.GUILD_ID;
+const RUSTY_USER_ID       = '449399625389047829';
+const RUSTY_WARNING_KEY   = 'rusty_fair_play_warning_v1';
+const RUSTY_WARNING_TEXT  = 'WARNING - YOU HAVE BEEN REPORTED FOR VIOLATING FAIR PLAY. If you would like to continue to play with your "girlfriend\'s" help, please report to league authorities. Current proposal: Minus 5 for help + Minus 5 per daily guess in the Middle East. Thank you for your cooperation on this matter';
 
 if (!TOKEN)        throw new Error('Missing DISCORD_TOKEN');
 if (!ANNOUNCE_CHANNEL_ID) throw new Error('Missing ANNOUNCE_CHANNEL_ID');
@@ -58,7 +61,30 @@ async function setupDB() {
       UNIQUE(user_id, date_str)
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS one_time_score_replies (
+      reply_key   TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL,
+      sent_at     TIMESTAMPTZ,
+      message_id  TEXT
+    )
+  `);
   console.log('DB ready');
+}
+
+async function maybeSendOneTimeScoreReply(message, userId) {
+  if (userId !== RUSTY_USER_ID) return;
+
+  const result = await pool.query(
+    `INSERT INTO one_time_score_replies (reply_key, user_id, sent_at, message_id)
+     VALUES ($1, $2, NOW(), $3)
+     ON CONFLICT (reply_key) DO NOTHING
+     RETURNING reply_key`,
+    [RUSTY_WARNING_KEY, userId, message.id]
+  );
+  if (!result.rows[0]) return;
+
+  await message.reply({ content: RUSTY_WARNING_TEXT, allowedMentions: { parse: [] } });
 }
 
 async function reactToLeagueTargets(targets) {
@@ -444,6 +470,8 @@ client.on('messageCreate', async (message) => {
 
     message.react('✅').catch(() => {});
     console.log(`Saved: ${username} -> ${score} on ${dateStr}`);
+    maybeSendOneTimeScoreReply(message, userId)
+      .catch(err => console.error('Failed to send one-time score reply:', err));
     Promise.all([
       resolveLiveHeadToHeadForScore(pool, dateStr, userId),
       resolveLiveAverageMatchupsForScore(pool, dateStr, userId)
