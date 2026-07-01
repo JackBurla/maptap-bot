@@ -87,13 +87,18 @@ async function maybeSendOneTimeScoreReply(message, userId) {
   await message.reply({ content: RUSTY_WARNING_TEXT, allowedMentions: { parse: [] } });
 }
 
+function reactionNameForValue(reaction) {
+  const customMatch = String(reaction).match(/^([^:]+):\d+$/);
+  return customMatch ? customMatch[1] : reaction;
+}
+
 async function reactToLeagueTargets(targets) {
   for (const target of targets) {
     if (!target.channel_id || !target.message_id || !target.reaction) continue;
     try {
       const ch = await client.channels.fetch(target.channel_id);
       const msg = await ch.messages.fetch(target.message_id);
-      await msg.react(target.reaction);
+      await reactIfMissing(msg, reactionNameForValue(target.reaction), target.reaction);
     } catch (err) {
       console.error('Failed to add league reaction:', err);
     }
