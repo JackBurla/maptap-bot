@@ -8,6 +8,7 @@ const {
   applyPromotionRelegation,
   buildPlayerAverages,
   dateAdd,
+  formatLeagueReminder,
   formatLeagueUpdate,
   formatTitleTracker,
   generateSeasonSchedule,
@@ -161,6 +162,17 @@ function testLeagueNamesAndTitles() {
   assert(message.includes('8,123 scored | A'));
 }
 
+function testLeagueReminderMessage() {
+  const message = formatLeagueReminder('2026-07-04', [
+    { league_level: 1, user_id: '111', username: 'A' },
+    { league_level: 3, user_id: '333', username: 'C' }
+  ]);
+  assert(message.includes('**MapTap League Reminder - 2026-07-04**'));
+  assert(message.includes('League Tism: <@111>'));
+  assert(message.includes('League Dunce: <@333>'));
+  assert.strictEqual(formatLeagueReminder('2026-07-04', []), null);
+}
+
 function testLiveAverageResolverExport() {
   assert.strictEqual(typeof resolveLiveAverageMatchupsForScore, 'function');
 }
@@ -173,6 +185,7 @@ testPromotionRelegation();
 testNoShowRemovalThreshold();
 testMessageSplit();
 testLeagueNamesAndTitles();
+testLeagueReminderMessage();
 testLiveAverageResolverExport();
 
 console.log('league tests passed');

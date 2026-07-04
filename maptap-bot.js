@@ -18,6 +18,8 @@ const {
   buildCurrentLeagueMessages,
   buildDailyLeagueMessages,
   ensureLeagueSeasonForDate,
+  formatLeagueReminder,
+  getLeagueReminderTargets,
   resolveLiveAverageMatchupsForScore,
   resolveLiveHeadToHeadForScore,
   setupLeagueDB
@@ -621,6 +623,35 @@ cron.schedule('1 0 * * *', async () => {
     console.log('League update sent');
   } catch (err) {
     console.error('Failed to send league update:', err);
+  }
+}, { timezone: 'America/New_York' });
+
+cron.schedule('0 21 * * *', async () => {
+  try {
+    const dateStr = todayEST();
+    const { rows: stateRows } = await pool.query('SELECT last_league_reminder_date FROM league_state WHERE id = 1');
+    if (stateRows[0]?.last_league_reminder_date === dateStr) {
+      console.log(`League reminder already sent for ${dateStr}, skipping`);
+      return;
+    }
+
+    const { targets } = await getLeagueReminderTargets(pool, dateStr);
+    const message = formatLeagueReminder(dateStr, targets);
+    if (message) {
+      const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
+      if (!channel?.isTextBased()) return;
+      await channel.send({
+        content: message,
+        allowedMentions: { users: targets.map(row => row.user_id) }
+      });
+      console.log(`League reminder sent for ${targets.length} player(s)`);
+    } else {
+      console.log(`No league reminder needed for ${dateStr}`);
+    }
+
+    await pool.query('UPDATE league_state SET last_league_reminder_date = $1 WHERE id = 1', [dateStr]);
+  } catch (err) {
+    console.error('Failed to send league reminder:', err);
   }
 }, { timezone: 'America/New_York' });
 

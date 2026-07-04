@@ -252,11 +252,13 @@ async function setupLeagueDB(pool) {
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS league_state (
-      id                    INTEGER PRIMARY KEY DEFAULT 1,
-      last_finalized_date   TEXT,
-      last_league_post_date TEXT
+      id                         INTEGER PRIMARY KEY DEFAULT 1,
+      last_finalized_date        TEXT,
+      last_league_post_date      TEXT,
+      last_league_reminder_date  TEXT
     )
   `);
+  await pool.query('ALTER TABLE league_state ADD COLUMN IF NOT EXISTS last_league_reminder_date TEXT');
   await pool.query('INSERT INTO league_state (id) VALUES (1) ON CONFLICT DO NOTHING');
   console.log('League DB ready');
 }
@@ -882,6 +884,30 @@ async function getScheduleForDate(pool, dateStr) {
   return { season, schedule: rows };
 }
 
+async function getLeagueReminderTargets(pool, dateStr) {
+  const season = await ensureLeagueSeasonForDate(pool, dateStr);
+  if (!season) return { season: null, targets: [] };
+
+  const { rows } = await pool.query(
+    `SELECT DISTINCT
+       lm.league_level,
+       lm.user_id,
+       m.username
+     FROM league_matchups lm
+     JOIN league_memberships m
+       ON m.season_id = lm.season_id AND m.user_id = lm.user_id
+     LEFT JOIN scores s
+       ON s.user_id = lm.user_id AND s.date_str = lm.date_str
+     WHERE lm.season_id = $1
+       AND lm.date_str = $2
+       AND s.user_id IS NULL
+     ORDER BY lm.league_level, m.username`,
+    [season.id, dateStr]
+  );
+
+  return { season, targets: rows };
+}
+
 function formatPointDiff(value) {
   const n = Number(value || 0);
   const rounded = Math.round(n * 10) / 10;
@@ -906,6 +932,22 @@ function formatTitleTracker(titles) {
     lines.push(`${LEAGUE_NAMES[level]}: ${leaders}`);
   }
   return lines;
+}
+
+function formatLeagueReminder(dateStr, targets) {
+  if (!targets.length) return null;
+  const lines = [
+    `**MapTap League Reminder - ${dateStr}**`,
+    '9 PM check-in. Still need scores from:'
+  ];
+
+  for (const level of [1, 2, 3]) {
+    const leagueTargets = targets.filter(row => row.league_level === level);
+    if (!leagueTargets.length) continue;
+    lines.push(`${LEAGUE_NAMES[level]}: ${leagueTargets.map(row => `<@${row.user_id}>`).join(' ')}`);
+  }
+
+  return lines.join('\n');
 }
 
 function formatLeagueUpdate({ dateStr, results, standings, titles, scheduleDate, schedule }) {
@@ -1043,8 +1085,10 @@ module.exports = {
   ensureLeagueSeasonForDate,
   finalizeLeagueDate,
   formatLeagueUpdate,
+  formatLeagueReminder,
   formatTitleTracker,
   generateSeasonSchedule,
+  getLeagueReminderTargets,
   getLeagueTitleTracker,
   rankStandings,
   recordNoShowExclusions,
