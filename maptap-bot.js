@@ -9,16 +9,9 @@ const {
   Client,
   GatewayIntentBits,
   EmbedBuilder,
-  AttachmentBuilder,
-  ActionRowBuilder,
-  ModalBuilder,
   PermissionFlagsBits,
-  SlashCommandBuilder,
-  TextInputBuilder,
-  TextInputStyle
+  SlashCommandBuilder
 } = require('discord.js');
-const path = require('path');
-const crypto = require('crypto');
 const cron = require('node-cron');
 const { Pool } = require('pg');
 const {
@@ -68,6 +61,26 @@ async function setupDB() {
       sent_at     TIMESTAMPTZ,
       message_id  TEXT
     )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS bot_state (
+      id               INTEGER PRIMARY KEY DEFAULT 1,
+      last_recap_date  TEXT
+    )
+  `);
+  await pool.query('INSERT INTO bot_state (id) VALUES (1) ON CONFLICT DO NOTHING');
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF to_regclass('public.insult_state') IS NOT NULL THEN
+        UPDATE bot_state
+        SET last_recap_date = COALESCE(
+          bot_state.last_recap_date,
+          (SELECT last_recap_date FROM insult_state WHERE id = 1)
+        )
+        WHERE id = 1;
+      END IF;
+    END $$;
   `);
   console.log('DB ready');
 }
@@ -163,11 +176,7 @@ function parsePost(content) {
   return { score, rounds };
 }
 
-function normalizeInsultSubmission(content) {
-  return content.replace(/\r\n/g, '\n').trim();
-}
-
-function canManageQueue(interaction) {
+function canManageServer(interaction) {
   return interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)
     || interaction.memberPermissions?.has(PermissionFlagsBits.Administrator);
 }
@@ -180,60 +189,6 @@ function botHasReaction(msg, emojiName) {
 async function reactIfMissing(msg, emojiName, reactValue) {
   if (botHasReaction(msg, emojiName)) return;
   await msg.react(reactValue);
-}
-
-function formatInsultLabel(i) {
-  return typeof i === 'object' ? `[image: ${i.image}]` : i;
-}
-
-function formatQueueState(queue, used) {
-  const maxLength = 1900;
-  const lines = [
-    `**Queue (${queue.length} remaining):**`,
-    ...(queue.length ? queue.map(formatInsultLabel) : ['_empty_']),
-    '',
-    `**Used this cycle (${used.length}):**`,
-    ...(used.length ? used.map(formatInsultLabel) : ['_empty_'])
-  ];
-  return truncateLines(lines, maxLength);
-}
-
-function formatSubmissionAudit(rows) {
-  const lines = [`**Community Submissions (${rows.length} shown):**`];
-  for (const row of rows) {
-    const submittedAt = new Date(row.submitted_at).toLocaleString('en-US', {
-      timeZone: 'America/New_York',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
-    });
-    lines.push(`${row.id}. **${row.submitted_by_name}** (${row.submitted_by_user_id}) - ${submittedAt}`);
-    lines.push(formatInsultLabel(row.content));
-  }
-  if (rows.length === 0) lines.push('_No community submissions yet_');
-  return truncateLines(lines, 1900);
-}
-
-function truncateLines(lines, maxLength) {
-  const visible = [];
-  let usedChars = 0;
-  for (const line of lines) {
-    const next = visible.length ? `\n${line}` : line;
-    if (usedChars + next.length > maxLength) break;
-    visible.push(line);
-    usedChars += next.length;
-  }
-
-  const omitted = lines.length - visible.length;
-  if (!omitted) return visible.join('\n');
-
-  const suffix = `\n...and ${omitted} more hidden for length`;
-  while (visible.length && usedChars + suffix.length > maxLength) {
-    const removed = visible.pop();
-    usedChars -= removed.length + (visible.length ? 1 : 0);
-  }
-  return `${visible.join('\n')}${suffix}`;
 }
 
 // ── Medal logic ───────────────────────────────────────────────────────────
@@ -332,8 +287,6 @@ async function getDunceLeaderboard() {
 const DAILY_MEDALS = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
 const MEDAL_NAMES  = ['gold', 'silver', 'bronze'];
 const DUNCE        = '<:Dunce:1492203597373636698>';
-const SUBMIT_INSULT_MODAL_ID = 'submit_insult_modal';
-const SUBMIT_INSULT_INPUT_ID = 'submit_insult_text';
 
 async function buildAnnouncement(dateStr) {
   const stats   = await getTodayStats(dateStr);
@@ -426,24 +379,13 @@ async function registerCommands() {
       .setName('mystats')
       .setDescription('Show your personal MapTap stats'),
     new SlashCommandBuilder()
-      .setName('submitinsult')
-      .setDescription('Privately submit an insult for the bot queue'),
-    new SlashCommandBuilder()
       .setName('leagues')
       .setDescription('Show current MapTap league tables and schedule')
       .addBooleanOption(option =>
         option
           .setName('post')
           .setDescription('Post publicly in this channel (server managers only)')
-      ),
-    new SlashCommandBuilder()
-      .setName('queuestate')
-      .setDescription('Show the insult queue state')
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
-    new SlashCommandBuilder()
-      .setName('insultsubmissions')
-      .setDescription('Show who submitted community insults')
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+      )
   ].map(command => command.toJSON());
 
   if (GUILD_ID) {
@@ -603,30 +545,6 @@ async function getMyStats(userId) {
 }
 
 client.on('interactionCreate', async (interaction) => {
-  if (interaction.isModalSubmit()) {
-    if (interaction.customId !== SUBMIT_INSULT_MODAL_ID) return;
-
-    await interaction.deferReply({ ephemeral: true });
-    const content = normalizeInsultSubmission(interaction.fields.getTextInputValue(SUBMIT_INSULT_INPUT_ID));
-    if (!content) {
-      await interaction.editReply({ content: 'No insult submitted.' });
-      return;
-    }
-
-    try {
-      await addCommunityInsult(content, interaction.user.id, interaction.user.username);
-      await interaction.editReply({ content: 'Submitted. It will stay hidden until the bot uses it.' });
-    } catch (err) {
-      if (err.code === '23505') {
-        await interaction.editReply({ content: 'That one is already in the queue.' });
-        return;
-      }
-      console.error('Failed to submit insult:', err);
-      await interaction.editReply({ content: 'Could not save that submission.' });
-    }
-    return;
-  }
-
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === 'maptap') {
@@ -663,7 +581,7 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.commandName === 'leagues') {
     const postPublicly = interaction.options.getBoolean('post') || false;
     await interaction.deferReply({ ephemeral: true });
-    if (postPublicly && !canManageQueue(interaction)) {
+    if (postPublicly && !canManageServer(interaction)) {
       await interaction.editReply({ content: 'Only server managers can post the league state publicly.' });
       return;
     }
@@ -678,400 +596,8 @@ client.on('interactionCreate', async (interaction) => {
     return;
   }
 
-  if (interaction.commandName === 'submitinsult') {
-    const modal = new ModalBuilder()
-      .setCustomId(SUBMIT_INSULT_MODAL_ID)
-      .setTitle('Submit an Insult');
-    const input = new TextInputBuilder()
-      .setCustomId(SUBMIT_INSULT_INPUT_ID)
-      .setLabel('Insult')
-      .setStyle(TextInputStyle.Paragraph)
-      .setMaxLength(1800)
-      .setRequired(true);
-    modal.addComponents(new ActionRowBuilder().addComponents(input));
-    await interaction.showModal(modal);
-    return;
-  }
-
-  if (interaction.commandName === 'queuestate') {
-    await interaction.deferReply({ ephemeral: true });
-    if (!canManageQueue(interaction)) {
-      await interaction.editReply({ content: 'Only server managers can view the insult queue.' });
-      return;
-    }
-    const { rows } = await pool.query('SELECT queue, used FROM insult_state WHERE id = 1');
-    const queue = rows[0].queue.filter(i => !isRetiredInsult(i));
-    const used = rows[0].used.filter(i => !isRetiredInsult(i));
-    await interaction.editReply({ content: formatQueueState(queue, used) });
-    return;
-  }
-
-  if (interaction.commandName === 'insultsubmissions') {
-    await interaction.deferReply({ ephemeral: true });
-    if (!canManageQueue(interaction)) {
-      await interaction.editReply({ content: 'Only server managers can view insult submissions.' });
-      return;
-    }
-    const { rows } = await pool.query(
-      `SELECT id, content, submitted_by_user_id, submitted_by_name, submitted_at
-       FROM insult_submissions
-       WHERE status = 'accepted'
-       ORDER BY submitted_at DESC
-       LIMIT 25`
-    );
-    await interaction.editReply({ content: formatSubmissionAudit(rows) });
-  }
 });
 
-const INSULTS = [
-  "this guy's fuckin retarded!",
-  "https://en.wikipedia.org/wiki/Walter_E._Fernald_Developmental_Center",
-  "https://www.ice.gov/careers/how-apply",
-  "congrats on your lobotomy",
-  "https://www.youtube.com/watch?v=LrkEc2V3mO4",
-  "https://www.youtube.com/watch?v=XcyhMmLTKss",
-  "you ever think they just maptapped wrong and blew up an Iranian hospital? Anyway nice score retard",
-  "budd dwyer should be your role model",
-  "in the steroid era this was refreshing",
-  "median average voter",
-  "charlie kirk died for this",
-  "hey there! congrats on the lowest score. atleast you aren't @hellorobotics",
-  "i am a nihlist",
-  "the cia killed JFK",
-  "i maptapped your mother",
-  "new game! AncestryTap! Your parents are cousins!",
-  { image: 'calvin.png' },
-  { image: 'child-left-behind.png' },
-  { image: 'frontal-lobe.png' },
-  "https://www.proprofs.com/quiz-school/quizzes/do-i-have-cte-quiz",
-  "https://msktc.org/tbi",
-  "https://specialneedsanswers.com/housing-options-for-adults-with-special-needs-14975",
-  "if this is kyle kys if not try again next time : )",
-  "Do you ever feel like a plastic bag\nDrifting through the wind, wanting to start again?",
-  "knowledge of world geography is useless its important to focus on your community",
-  "https://www.youtube.com/watch?v=AVB_aIXMEgE",
-  "flight 93 was shot down",
-  "Lennie Small lookin ass",
-  "congrats to the winner of retard of the day.... Kash Patel! You are second",
-  "https://petersonacademy.com/signup",
-  "it is cooler to be here than get 1000 🧂",
-  "Woodrow Wilson drew better borders drunk at Versailles",
-];
-
-const INSULTS_REMOVED_HASHES = new Set([
-  '06a5b0d515d74fbc8230cc8495e8892ea904fb527c5a5c8acebe21a15acbb3f5',
-  'cd9187ca09dba8090db21579bc2911a4c44cd6ba5c74841a01c9140116f9667d',
-]);
-
-// Bump this any time the seed data needs to change — triggers a re-seed on next deploy
-const QUEUE_VERSION = 9;
-
-// All insults confirmed fired — go to back of queue
-const INSULTS_ALREADY_USED = [
-  // confirmed via Discord scrape Jun 2 2026
-  { image: 'calvin.png' },
-  { image: 'child-left-behind.png' },
-  { image: 'frontal-lobe.png' },
-  "i am a nihlist",
-  "budd dwyer should be your role model",
-  "median average voter",
-  "https://msktc.org/tbi",
-  "new game! AncestryTap! Your parents are cousins!",
-  "Lennie Small lookin ass",
-  "you ever think they just maptapped wrong and blew up an Iranian hospital? Anyway nice score retard",
-  "i maptapped your mother",
-  "https://petersonacademy.com/signup",
-  "the cia killed JFK",
-  "in the steroid era this was refreshing",
-  // confirmed by user Jun 2 2026 (missed by scrape — deleted or pre-cutoff)
-  "this guy's fuckin retarded!",
-  "https://en.wikipedia.org/wiki/Walter_E._Fernald_Developmental_Center",
-  "https://www.ice.gov/careers/how-apply",
-  "congrats on your lobotomy",
-  "https://www.youtube.com/watch?v=LrkEc2V3mO4",
-  "https://www.youtube.com/watch?v=XcyhMmLTKss",
-  "charlie kirk died for this",
-  "hey there! congrats on the lowest score. atleast you aren't @hellorobotics",
-  "https://www.proprofs.com/quiz-school/quizzes/do-i-have-cte-quiz",
-  "https://specialneedsanswers.com/housing-options-for-adults-with-special-needs-14975",
-  "https://www.youtube.com/watch?v=AVB_aIXMEgE",
-];
-
-function shuffle(arr) {
-  const a = arr.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-function insultFingerprint(i) {
-  return crypto.createHash('sha256').update(JSON.stringify(i)).digest('hex');
-}
-
-function isRetiredInsult(i) {
-  return INSULTS_REMOVED_HASHES.has(insultFingerprint(i));
-}
-
-async function setupInsultQueue() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS insult_submissions (
-      id                   SERIAL PRIMARY KEY,
-      content              TEXT NOT NULL UNIQUE,
-      submitted_by_user_id TEXT NOT NULL,
-      submitted_by_name    TEXT NOT NULL,
-      status               TEXT NOT NULL DEFAULT 'accepted',
-      submitted_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS insult_state (
-      id               INTEGER PRIMARY KEY DEFAULT 1,
-      queue            JSONB NOT NULL DEFAULT '[]',
-      used             JSONB NOT NULL DEFAULT '[]',
-      version          INTEGER NOT NULL DEFAULT 0,
-      last_recap_date  TEXT,
-      last_insult_date TEXT
-    )
-  `);
-  await pool.query(`ALTER TABLE insult_state ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 0`);
-  await pool.query(`ALTER TABLE insult_state ADD COLUMN IF NOT EXISTS last_recap_date TEXT`);
-  await pool.query(`ALTER TABLE insult_state ADD COLUMN IF NOT EXISTS last_insult_date TEXT`);
-  await pool.query(`ALTER TABLE insult_state ADD COLUMN IF NOT EXISTS counts JSONB NOT NULL DEFAULT '{}'`);
-
-  const inserted = await pool.query(`
-    INSERT INTO insult_state (id) VALUES (1) ON CONFLICT DO NOTHING RETURNING id
-  `);
-
-  const { rows } = await pool.query('SELECT queue, used, version, last_recap_date, last_insult_date FROM insult_state WHERE id = 1');
-  const state = rows[0];
-  const acceptedInsults = await getAcceptedCommunityInsults();
-  const allInsults = [...INSULTS, ...acceptedInsults];
-  const prunedQueue = state.queue.filter(i => !isRetiredInsult(i));
-  const prunedUsed = state.used.filter(i => !isRetiredInsult(i));
-  if (prunedQueue.length !== state.queue.length || prunedUsed.length !== state.used.length) {
-    const { rows: countRows } = await pool.query('SELECT counts FROM insult_state WHERE id = 1');
-    const counts = countRows[0]?.counts || {};
-    for (const key of Object.keys(counts)) {
-      if (isRetiredInsult(key)) delete counts[key];
-    }
-    await pool.query(
-      'UPDATE insult_state SET queue = $1, used = $2, counts = $3 WHERE id = 1',
-      [JSON.stringify(prunedQueue), JSON.stringify(prunedUsed), JSON.stringify(counts)]
-    );
-    state.queue = prunedQueue;
-    state.used = prunedUsed;
-    console.log('Removed retired insult(s) from queue state');
-  }
-
-  // Seed last_*_date to today if null — prevents tonight's midnight run after the 9PM already fired
-  if (!state.last_recap_date || !state.last_insult_date) {
-    await pool.query(
-      'UPDATE insult_state SET last_recap_date = COALESCE(last_recap_date, $1), last_insult_date = COALESCE(last_insult_date, $1) WHERE id = 1',
-      [todayEST()]
-    );
-  }
-
-  if (inserted.rows.length > 0 || state.version < QUEUE_VERSION) {
-    // First boot or version mismatch — re-seed with correct data
-    const usedSet = new Set(INSULTS_ALREADY_USED.map(i => JSON.stringify(i)));
-    const FIRE_TONIGHT = "it is cooler to be here than get 1000 🧂";
-    const rest = shuffle(allInsults.filter(i => !usedSet.has(JSON.stringify(i)) && i !== FIRE_TONIGHT));
-    const unused = [FIRE_TONIGHT, ...rest];
-    // Seed fire counts from Discord scrape (Jun 2 2026)
-    const seedCounts = {
-      '[image: calvin.png]': 3,
-      '[image: frontal-lobe.png]': 2,
-      '[image: child-left-behind.png]': 2,
-      'i am a nihlist': 2,
-      'budd dwyer should be your role model': 2,
-      'median average voter': 2,
-      'https://msktc.org/tbi': 2,
-      'new game! AncestryTap! Your parents are cousins!': 1,
-      'Lennie Small lookin ass': 1,
-      'you ever think they just maptapped wrong and blew up an Iranian hospital? Anyway nice score retard': 1,
-      'i maptapped your mother': 1,
-      'https://petersonacademy.com/signup': 1,
-      'the cia killed JFK': 1,
-      'in the steroid era this was refreshing': 1,
-      // flight 93 and kash patel left at 0 (omitted) so they go to front tier
-      // confirmed by user Jun 2 2026
-      'this guy\'s fuckin retarded!': 1,
-      'https://en.wikipedia.org/wiki/Walter_E._Fernald_Developmental_Center': 1,
-      'https://www.ice.gov/careers/how-apply': 1,
-      'congrats on your lobotomy': 1,
-      'https://www.youtube.com/watch?v=LrkEc2V3mO4': 1,
-      'https://www.youtube.com/watch?v=XcyhMmLTKss': 1,
-      'charlie kirk died for this': 1,
-      'hey there! congrats on the lowest score. atleast you aren\'t @hellorobotics': 1,
-      'https://www.proprofs.com/quiz-school/quizzes/do-i-have-cte-quiz': 1,
-      'https://specialneedsanswers.com/housing-options-for-adults-with-special-needs-14975': 1,
-      'https://www.youtube.com/watch?v=AVB_aIXMEgE': 1,
-    };
-    await pool.query(
-      'UPDATE insult_state SET queue = $1, used = $2, version = $3, counts = $4 WHERE id = 1',
-      [JSON.stringify(unused), JSON.stringify(INSULTS_ALREADY_USED), QUEUE_VERSION, JSON.stringify(seedCounts)]
-    );
-    console.log(`Insult queue seeded (v${QUEUE_VERSION})`);
-  } else {
-    // Subsequent boots — append any brand-new insults to back of queue
-    const known = new Set([...state.queue, ...state.used].map(i => JSON.stringify(i)));
-    const brandNew = shuffle(allInsults.filter(i => !known.has(JSON.stringify(i))));
-    if (brandNew.length > 0) {
-      await pool.query(
-        'UPDATE insult_state SET queue = $1 WHERE id = 1',
-        [JSON.stringify([...state.queue, ...brandNew])]
-      );
-      console.log(`Added ${brandNew.length} new insult(s) to back of queue`);
-    }
-  }
-  console.log('Insult queue ready');
-}
-
-function insultKey(i) {
-  return typeof i === 'object' ? `[image: ${i.image}]` : i;
-}
-
-async function getAcceptedCommunityInsults(clientOrPool = pool) {
-  const { rows } = await clientOrPool.query(
-    `SELECT content FROM insult_submissions WHERE status = 'accepted' ORDER BY submitted_at`
-  );
-  return rows.map(r => r.content).filter(i => !isRetiredInsult(i));
-}
-
-async function getAllActiveInsults(clientOrPool = pool) {
-  return [...INSULTS, ...await getAcceptedCommunityInsults(clientOrPool)];
-}
-
-async function addCommunityInsult(content, submittedByUserId, submittedByName) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const normalized = normalizeInsultSubmission(content);
-    if (isRetiredInsult(normalized)) {
-      const err = new Error('Retired insult submission');
-      err.code = '23505';
-      throw err;
-    }
-    const stateResult = await client.query('SELECT queue, used, counts FROM insult_state WHERE id = 1 FOR UPDATE');
-    const state = stateResult.rows[0];
-    const allActive = await getAllActiveInsults(client);
-    const known = new Set([
-      ...allActive,
-      ...state.queue,
-      ...state.used
-    ].map(i => JSON.stringify(i)));
-
-    if (known.has(JSON.stringify(normalized))) {
-      const err = new Error('Duplicate insult submission');
-      err.code = '23505';
-      throw err;
-    }
-
-    await client.query(
-      `INSERT INTO insult_submissions (content, submitted_by_user_id, submitted_by_name)
-       VALUES ($1, $2, $3)`,
-      [normalized, submittedByUserId, submittedByName]
-    );
-
-    const queue = [...state.queue, normalized];
-    const counts = state.counts || {};
-    const key = insultKey(normalized);
-    if (counts[key] === undefined) counts[key] = 0;
-
-    await client.query(
-      'UPDATE insult_state SET queue = $1, counts = $2 WHERE id = 1',
-      [JSON.stringify(queue), JSON.stringify(counts)]
-    );
-
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-
-// Shuffle within count tiers so lower-fired insults always go before higher-fired ones
-function buildCycleQueue(insults, counts) {
-  const groups = {};
-  for (const ins of insults) {
-    const c = counts[insultKey(ins)] || 0;
-    if (!groups[c]) groups[c] = [];
-    groups[c].push(ins);
-  }
-  const sorted = Object.keys(groups).map(Number).sort((a, b) => a - b);
-  return sorted.flatMap(c => shuffle(groups[c]));
-}
-
-async function pickInsult() {
-  const db = await pool.connect();
-  try {
-    await db.query('BEGIN');
-    const { rows } = await db.query('SELECT queue, used, version, counts FROM insult_state WHERE id = 1 FOR UPDATE');
-    let { queue, used, version, counts } = rows[0];
-    queue = queue.filter(i => !isRetiredInsult(i));
-    used = used.filter(i => !isRetiredInsult(i));
-
-    if (queue.length === 0) {
-      queue = buildCycleQueue(await getAllActiveInsults(db), counts);
-      used = [];
-      console.log('Insult queue cycled — starting new round');
-    }
-
-    const insult = queue.shift();
-    used.push(insult);
-
-    const key = insultKey(insult);
-    counts[key] = (counts[key] || 0) + 1;
-
-    await db.query(
-      'UPDATE insult_state SET queue = $1, used = $2, version = $3, counts = $4 WHERE id = 1',
-      [JSON.stringify(queue), JSON.stringify(used), version, JSON.stringify(counts)]
-    );
-
-    await db.query('COMMIT');
-    return insult;
-  } catch (err) {
-    await db.query('ROLLBACK');
-    throw err;
-  } finally {
-    db.release();
-  }
-}
-
-cron.schedule('1 0 * * *', async () => {
-  try {
-    const dateStr = yesterdayEST();
-    const { rows: stateRows } = await pool.query('SELECT last_insult_date FROM insult_state WHERE id = 1');
-    if (stateRows[0]?.last_insult_date === dateStr) {
-      console.log(`Insult already sent for ${dateStr}, skipping`);
-      return;
-    }
-    const { rows } = await pool.query(
-      'SELECT * FROM scores WHERE date_str = $1 AND message_id IS NOT NULL ORDER BY score ASC LIMIT 1',
-      [dateStr]
-    );
-    if (!rows.length) return;
-    const loser = rows[0];
-    const insult = await pickInsult();
-    const ch  = await client.channels.fetch(loser.channel_id);
-    const msg = await ch.messages.fetch(loser.message_id);
-    if (insult && typeof insult === 'object' && insult.image) {
-      const file = new AttachmentBuilder(path.join(__dirname, 'insult-images', insult.image));
-      await msg.reply({ files: [file] });
-    } else {
-      await msg.reply({ content: insult, allowedMentions: { parse: [] } });
-    }
-    await pool.query('UPDATE insult_state SET last_insult_date = $1 WHERE id = 1', [dateStr]);
-    console.log(`Insulted ${loser.username}`);
-  } catch (err) {
-    console.error('Failed to send insult:', err);
-  }
-}, { timezone: 'America/New_York' });
 
 cron.schedule('1 0 * * *', async () => {
   try {
@@ -1101,7 +627,7 @@ cron.schedule('1 0 * * *', async () => {
 cron.schedule('0 0 * * *', async () => {
   try {
     const dateStr = yesterdayEST();
-    const { rows: stateRows } = await pool.query('SELECT last_recap_date FROM insult_state WHERE id = 1');
+    const { rows: stateRows } = await pool.query('SELECT last_recap_date FROM bot_state WHERE id = 1');
     if (stateRows[0]?.last_recap_date === dateStr) {
       console.log(`Recap already sent for ${dateStr}, skipping`);
       return;
@@ -1109,7 +635,7 @@ cron.schedule('0 0 * * *', async () => {
     const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
     if (!channel?.isTextBased()) return;
     await channel.send({ embeds: [await buildAnnouncement(dateStr)] });
-    await pool.query('UPDATE insult_state SET last_recap_date = $1 WHERE id = 1', [dateStr]);
+    await pool.query('UPDATE bot_state SET last_recap_date = $1 WHERE id = 1', [dateStr]);
     console.log('Daily recap sent');
   } catch (err) {
     console.error('Failed to send recap:', err);
@@ -1117,7 +643,6 @@ cron.schedule('0 0 * * *', async () => {
 }, { timezone: 'America/New_York' });
 
 setupDB()
-  .then(() => setupInsultQueue())
   .then(() => setupLeagueDB(pool))
   .then(() => ensureLeagueSeasonForDate(pool, todayEST()))
   .then(() => client.login(TOKEN));
