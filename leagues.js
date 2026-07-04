@@ -938,7 +938,7 @@ function formatLeagueUpdate({ dateStr, results, standings, titles, scheduleDate,
     if (!table.length) continue;
     sections.push(`__${LEAGUE_NAMES[level]}__`);
     for (const row of table) {
-      sections.push(`${row.points} pts | ${formatRecord(row)} | ${formatPointDiff(row.point_diff)} | ${row.username}`);
+      sections.push(`${row.points} pts | ${formatRecord(row)} | ${formatPointDiff(row.point_diff)} | ${formatScore(row.total_score)} scored | ${row.username}`);
     }
   }
 

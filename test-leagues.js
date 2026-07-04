@@ -141,13 +141,24 @@ function testLeagueNamesAndTitles() {
   const message = formatLeagueUpdate({
     dateStr: '2026-06-01',
     results: [],
-    standings: {},
+    standings: {
+      1: [{
+        username: 'A',
+        points: 6,
+        wins: 2,
+        losses: 0,
+        ties: 0,
+        point_diff: 123.4,
+        total_score: 8123
+      }]
+    },
     titles: { 1: [{ username: 'A', titles: 2 }] },
     scheduleDate: '2026-06-02',
     schedule: []
   });
   assert(message.includes('**Titles**'));
   assert(message.includes('League Tism: A x2'));
+  assert(message.includes('8,123 scored | A'));
 }
 
 function testLiveAverageResolverExport() {
