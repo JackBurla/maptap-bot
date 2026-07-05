@@ -18,6 +18,7 @@ const {
   resolveLiveAverageMatchupsForScore,
   resultForScores,
   seedInitialMemberships,
+  seasonAwardUserIds,
   splitDiscordMessage
 } = require('./leagues');
 
@@ -178,16 +179,16 @@ function testLeagueReminderMessage() {
 function testSeasonAwardsPanel() {
   const standings = {
     1: [
-      { username: 'Tism Champ', points: 20, wins: 6, point_diff: 100, total_score: 8000, seed_average: 800 },
-      { username: 'Tism Low', points: 6, wins: 2, point_diff: -20, total_score: 7000, seed_average: 700 }
+      { user_id: 'tism', username: 'Tism Champ', points: 20, wins: 6, point_diff: 100, total_score: 8000, seed_average: 800 },
+      { user_id: 'tism-low', username: 'Tism Low', points: 6, wins: 2, point_diff: -20, total_score: 7000, seed_average: 700 }
     ],
     2: [
-      { username: 'Mid Champ', points: 21, wins: 7, point_diff: 200, total_score: 7600, seed_average: 760 },
-      { username: 'Right Day Merchant', points: 15, wins: 5, point_diff: -250, total_score: 6100, seed_average: 610 }
+      { user_id: 'mid', username: 'Mid Champ', points: 21, wins: 7, point_diff: 200, total_score: 7600, seed_average: 760 },
+      { user_id: 'israel', username: 'Right Day Merchant', points: 15, wins: 5, point_diff: -250, total_score: 6100, seed_average: 610 }
     ],
     3: [
-      { username: 'Dunce Champ', points: 18, wins: 6, point_diff: 300, total_score: 8100, seed_average: 810 },
-      { username: 'Chosen', points: 0, wins: 0, point_diff: -500, total_score: 3000, seed_average: 300 }
+      { user_id: 'dunce', username: 'Dunce Champ', points: 18, wins: 6, point_diff: 300, total_score: 8100, seed_average: 810 },
+      { user_id: 'chosen', username: 'Chosen', points: 0, wins: 0, point_diff: -500, total_score: 3000, seed_average: 300 }
     ]
   };
   const awards = buildSeasonAwards(standings, { season_number: 1 });
@@ -198,10 +199,11 @@ function testSeasonAwardsPanel() {
 
   const panel = formatSeasonAwardsPanel(awards);
   assert(panel.includes('**Season 1 Special Awards**'));
-  assert(panel.includes('League Tism: Tism Champ'));
-  assert(panel.includes('**The Chosen One**: Chosen'));
-  assert(panel.includes('**Most Points Scored**: Dunce Champ - 8,100 scored'));
-  assert(panel.includes('**Israel Award**: Right Day Merchant - 5 wins, -250 diff, 6,100 scored'));
+  assert(panel.includes('League Tism: <@tism>'));
+  assert(panel.includes('**The Chosen One**: <@chosen>'));
+  assert(panel.includes('**Most Points Scored**: <@dunce> - 8,100 scored'));
+  assert(panel.includes('**Israel Award**: <@israel> - 5 wins, -250 diff, 6,100 scored'));
+  assert.deepStrictEqual(seasonAwardUserIds(awards), ['tism', 'mid', 'dunce', 'chosen', 'israel']);
 }
 
 function testLiveAverageResolverExport() {

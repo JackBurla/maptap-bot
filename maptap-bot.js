@@ -102,6 +102,39 @@ async function maybeSendOneTimeScoreReply(message, userId) {
   await message.reply({ content: RUSTY_WARNING_TEXT, allowedMentions: { parse: [] } });
 }
 
+async function updateLeagueUsernameForDate(userId, username, dateStr) {
+  await pool.query(
+    `UPDATE league_memberships m
+     SET username = $2
+     FROM league_seasons s
+     WHERE m.season_id = s.id
+       AND m.user_id = $1
+       AND s.start_date <= $3
+       AND s.end_date >= $3`,
+    [userId, username, dateStr]
+  );
+}
+
+async function refreshLeagueUsernamesForDate(dateStr) {
+  await ensureLeagueSeasonForDate(pool, dateStr);
+  const { rows } = await pool.query(
+    `SELECT DISTINCT m.user_id
+     FROM league_memberships m
+     JOIN league_seasons s ON s.id = m.season_id
+     WHERE s.start_date <= $1 AND s.end_date >= $1`,
+    [dateStr]
+  );
+
+  for (const row of rows) {
+    try {
+      const user = await client.users.fetch(row.user_id);
+      if (user?.username) await updateLeagueUsernameForDate(row.user_id, user.username, dateStr);
+    } catch (err) {
+      console.error(`Failed to refresh league username for ${row.user_id}:`, err);
+    }
+  }
+}
+
 function reactionNameForValue(reaction) {
   const customMatch = String(reaction).match(/^([^:]+):\d+$/);
   return customMatch ? customMatch[1] : reaction;
@@ -411,7 +444,7 @@ client.on('messageCreate', async (message) => {
   const { score, rounds } = parsed;
   const dateStr  = todayEST();
   const userId   = message.author.id;
-  const username = message.member?.displayName ?? message.author.username;
+  const username = message.author.username;
 
   try {
     const insertResult = await pool.query(
@@ -428,6 +461,7 @@ client.on('messageCreate', async (message) => {
     }
 
     message.react('✅').catch(() => {});
+    await updateLeagueUsernameForDate(userId, username, dateStr);
     console.log(`Saved: ${username} -> ${score} on ${dateStr}`);
     maybeSendOneTimeScoreReply(message, userId)
       .catch(err => console.error('Failed to send one-time score reply:', err));
@@ -589,6 +623,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     try {
+      await refreshLeagueUsernamesForDate(todayEST());
       const { messages } = await buildCurrentLeagueMessages(pool, todayEST());
       await replyWithLeagueMessages(interaction, messages, postPublicly);
     } catch (err) {
@@ -614,9 +649,17 @@ cron.schedule('1 0 * * *', async () => {
     const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
     if (!channel?.isTextBased()) return;
 
-    const { messages, reactionTargets } = await buildDailyLeagueMessages(pool, resultDate, scheduleDate);
-    for (const content of messages) {
-      await channel.send({ content, allowedMentions: { parse: [] } });
+    await refreshLeagueUsernamesForDate(resultDate);
+    await buildDailyLeagueMessages(pool, resultDate, scheduleDate);
+    await refreshLeagueUsernamesForDate(scheduleDate);
+    const { messages, reactionTargets, awardMentionUserIds = [] } = await buildDailyLeagueMessages(pool, resultDate, scheduleDate);
+    for (let i = 0; i < messages.length; i++) {
+      const content = messages[i];
+      const isAwardsMessage = awardMentionUserIds.length && i === messages.length - 1;
+      await channel.send({
+        content,
+        allowedMentions: isAwardsMessage ? { users: awardMentionUserIds } : { parse: [] }
+      });
     }
     await reactToLeagueTargets(reactionTargets);
     await pool.query('UPDATE league_state SET last_league_post_date = $1 WHERE id = 1', [resultDate]);
@@ -635,6 +678,7 @@ cron.schedule('0 21 * * *', async () => {
       return;
     }
 
+    await refreshLeagueUsernamesForDate(dateStr);
     const { targets } = await getLeagueReminderTargets(pool, dateStr);
     const message = formatLeagueReminder(dateStr, targets);
     if (message) {

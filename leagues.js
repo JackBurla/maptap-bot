@@ -924,6 +924,11 @@ function formatScore(value) {
   return Number.isInteger(n) ? n.toLocaleString() : n.toFixed(1);
 }
 
+function formatAwardWinner(row) {
+  if (!row) return '_none_';
+  return row.user_id ? `<@${row.user_id}>` : row.username;
+}
+
 function buildSeasonAwards(standings, season = {}) {
   const allPlayers = flattenStandings(standings);
   const leagueWinners = [1, 2, 3]
@@ -1003,6 +1008,18 @@ function formatLeagueReminder(dateStr, targets) {
   return lines.join('\n');
 }
 
+function seasonAwardUserIds(awards) {
+  if (!awards) return [];
+  const ids = [];
+  for (const row of awards.leagueWinners || []) {
+    if (row.winner?.user_id) ids.push(row.winner.user_id);
+  }
+  for (const row of [awards.chosenOne, awards.mostScored, awards.israelAward]) {
+    if (row?.user_id) ids.push(row.user_id);
+  }
+  return [...new Set(ids)];
+}
+
 function formatSeasonAwardsPanel(awards) {
   if (!awards) return null;
   const title = awards.season_number
@@ -1013,20 +1030,20 @@ function formatSeasonAwardsPanel(awards) {
   if (awards.leagueWinners?.length) {
     lines.push('**League Winners**');
     for (const row of awards.leagueWinners) {
-      lines.push(`${LEAGUE_NAMES[row.league_level]}: ${row.winner.username}`);
+      lines.push(`${LEAGUE_NAMES[row.league_level]}: ${formatAwardWinner(row.winner)}`);
     }
   }
 
   if (awards.chosenOne) {
-    lines.push('', `**The Chosen One**: ${awards.chosenOne.username} (${LEAGUE_NAMES[3]} last place)`);
+    lines.push('', `**The Chosen One**: ${formatAwardWinner(awards.chosenOne)} (${LEAGUE_NAMES[3]} last place)`);
   }
 
   if (awards.mostScored) {
-    lines.push(`**Most Points Scored**: ${awards.mostScored.username} - ${formatScore(awards.mostScored.total_score)} scored`);
+    lines.push(`**Most Points Scored**: ${formatAwardWinner(awards.mostScored)} - ${formatScore(awards.mostScored.total_score)} scored`);
   }
 
   if (awards.israelAward) {
-    lines.push(`**Israel Award**: ${awards.israelAward.username} - ${awards.israelAward.wins} wins, ${formatPointDiff(awards.israelAward.point_diff)} diff, ${formatScore(awards.israelAward.total_score)} scored`);
+    lines.push(`**Israel Award**: ${formatAwardWinner(awards.israelAward)} - ${awards.israelAward.wins} wins, ${formatPointDiff(awards.israelAward.point_diff)} diff, ${formatScore(awards.israelAward.total_score)} scored`);
   }
 
   return lines.join('\n');
@@ -1116,9 +1133,10 @@ async function buildDailyLeagueMessages(pool, resultDate, scheduleDate) {
   if (!standingsSeason) return { messages: [], reactionTargets: [] };
   const standings = await buildStandings(pool, standingsSeason.id);
   const titles = await getLeagueTitleTracker(pool);
-  const awardsText = finalized.season && resultDate === finalized.season.end_date
-    ? formatSeasonAwardsPanel(buildSeasonAwards(standings, finalized.season))
+  const awards = finalized.season && resultDate === finalized.season.end_date
+    ? buildSeasonAwards(standings, finalized.season)
     : null;
+  const awardsText = formatSeasonAwardsPanel(awards);
   const text = formatLeagueUpdate({
     dateStr: resultDate,
     results: finalized.results || [],
@@ -1129,6 +1147,7 @@ async function buildDailyLeagueMessages(pool, resultDate, scheduleDate) {
   });
   return {
     messages: awardsText ? [...splitDiscordMessage(text), awardsText] : splitDiscordMessage(text),
+    awardMentionUserIds: seasonAwardUserIds(awards),
     reactionTargets: finalized.reactionTargets || []
   };
 }
@@ -1184,6 +1203,7 @@ module.exports = {
   resolveLiveAverageMatchupsForScore,
   resultForScores,
   seedInitialMemberships,
+  seasonAwardUserIds,
   setupLeagueDB,
   splitDiscordMessage
 };
