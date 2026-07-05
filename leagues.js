@@ -87,6 +87,10 @@ function rankStandings(rows) {
   );
 }
 
+function flattenStandings(standings) {
+  return [1, 2, 3].flatMap(level => standings[level] || []);
+}
+
 function applyPromotionRelegation(memberships, standingsByLeague, newPlayers) {
   const next = new Map(memberships.map(member => [member.user_id, { ...member }]));
 
@@ -920,6 +924,39 @@ function formatScore(value) {
   return Number.isInteger(n) ? n.toLocaleString() : n.toFixed(1);
 }
 
+function buildSeasonAwards(standings, season = {}) {
+  const allPlayers = flattenStandings(standings);
+  const leagueWinners = [1, 2, 3]
+    .map(level => ({ league_level: level, winner: standings[level]?.[0] || null }))
+    .filter(row => row.winner);
+  const dunceTable = standings[3] || [];
+  const chosenOne = dunceTable[dunceTable.length - 1] || null;
+  const mostScored = allPlayers
+    .slice()
+    .sort((a, b) =>
+      b.total_score - a.total_score ||
+      b.points - a.points ||
+      b.point_diff - a.point_diff ||
+      a.username.localeCompare(b.username)
+    )[0] || null;
+  const israelAward = allPlayers
+    .filter(row => Number(row.wins || 0) >= 3)
+    .sort((a, b) =>
+      a.point_diff - b.point_diff ||
+      a.total_score - b.total_score ||
+      b.wins - a.wins ||
+      a.username.localeCompare(b.username)
+    )[0] || null;
+
+  return {
+    season_number: season.season_number,
+    leagueWinners,
+    chosenOne,
+    mostScored,
+    israelAward
+  };
+}
+
 function formatTitleTracker(titles) {
   const lines = [];
   for (const level of [1, 2, 3]) {
@@ -945,6 +982,35 @@ function formatLeagueReminder(dateStr, targets) {
     const leagueTargets = targets.filter(row => row.league_level === level);
     if (!leagueTargets.length) continue;
     lines.push(`${LEAGUE_NAMES[level]}: ${leagueTargets.map(row => `<@${row.user_id}>`).join(' ')}`);
+  }
+
+  return lines.join('\n');
+}
+
+function formatSeasonAwardsPanel(awards) {
+  if (!awards) return null;
+  const title = awards.season_number
+    ? `**Season ${awards.season_number} Special Awards**`
+    : '**Season Special Awards**';
+  const lines = [title];
+
+  if (awards.leagueWinners?.length) {
+    lines.push('**League Winners**');
+    for (const row of awards.leagueWinners) {
+      lines.push(`${LEAGUE_NAMES[row.league_level]}: ${row.winner.username}`);
+    }
+  }
+
+  if (awards.chosenOne) {
+    lines.push('', `**The Chosen One**: ${awards.chosenOne.username} (${LEAGUE_NAMES[3]} last place)`);
+  }
+
+  if (awards.mostScored) {
+    lines.push(`**Most Points Scored**: ${awards.mostScored.username} - ${formatScore(awards.mostScored.total_score)} scored`);
+  }
+
+  if (awards.israelAward) {
+    lines.push(`**Israel Award**: ${awards.israelAward.username} - ${awards.israelAward.wins} wins, ${formatPointDiff(awards.israelAward.point_diff)} diff, ${formatScore(awards.israelAward.total_score)} scored`);
   }
 
   return lines.join('\n');
@@ -1034,6 +1100,9 @@ async function buildDailyLeagueMessages(pool, resultDate, scheduleDate) {
   if (!standingsSeason) return { messages: [], reactionTargets: [] };
   const standings = await buildStandings(pool, standingsSeason.id);
   const titles = await getLeagueTitleTracker(pool);
+  const awardsText = finalized.season && resultDate === finalized.season.end_date
+    ? formatSeasonAwardsPanel(buildSeasonAwards(standings, finalized.season))
+    : null;
   const text = formatLeagueUpdate({
     dateStr: resultDate,
     results: finalized.results || [],
@@ -1043,7 +1112,7 @@ async function buildDailyLeagueMessages(pool, resultDate, scheduleDate) {
     schedule: scheduleInfo.schedule || []
   });
   return {
-    messages: splitDiscordMessage(text),
+    messages: awardsText ? [...splitDiscordMessage(text), awardsText] : splitDiscordMessage(text),
     reactionTargets: finalized.reactionTargets || []
   };
 }
@@ -1080,12 +1149,14 @@ module.exports = {
   buildCurrentLeagueMessages,
   buildDailyLeagueMessages,
   buildPlayerAverages,
+  buildSeasonAwards,
   buildStandings,
   dateAdd,
   ensureLeagueSeasonForDate,
   finalizeLeagueDate,
   formatLeagueUpdate,
   formatLeagueReminder,
+  formatSeasonAwardsPanel,
   formatTitleTracker,
   generateSeasonSchedule,
   getLeagueReminderTargets,
