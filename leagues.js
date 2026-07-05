@@ -939,12 +939,28 @@ function buildSeasonAwards(standings, season = {}) {
       b.point_diff - a.point_diff ||
       a.username.localeCompare(b.username)
     )[0] || null;
-  const israelAward = allPlayers
-    .filter(row => Number(row.wins || 0) >= 3)
+  const israelEligible = allPlayers.filter(row => Number(row.wins || 0) >= 5);
+  const lowScoreRank = new Map(
+    israelEligible
+      .slice()
+      .sort((a, b) => a.total_score - b.total_score || a.username.localeCompare(b.username))
+      .map((row, idx) => [row.user_id || row.username, idx + 1])
+  );
+  const lowDiffRank = new Map(
+    israelEligible
+      .slice()
+      .sort((a, b) => a.point_diff - b.point_diff || a.username.localeCompare(b.username))
+      .map((row, idx) => [row.user_id || row.username, idx + 1])
+  );
+  const israelAward = israelEligible
+    .map(row => ({
+      ...row,
+      israel_score: lowScoreRank.get(row.user_id || row.username) + lowDiffRank.get(row.user_id || row.username)
+    }))
     .sort((a, b) =>
-      a.point_diff - b.point_diff ||
+      a.israel_score - b.israel_score ||
       a.total_score - b.total_score ||
-      b.wins - a.wins ||
+      a.point_diff - b.point_diff ||
       a.username.localeCompare(b.username)
     )[0] || null;
 

@@ -183,7 +183,7 @@ function testSeasonAwardsPanel() {
     ],
     2: [
       { username: 'Mid Champ', points: 21, wins: 7, point_diff: 200, total_score: 7600, seed_average: 760 },
-      { username: 'Right Day Merchant', points: 9, wins: 3, point_diff: -250, total_score: 6100, seed_average: 610 }
+      { username: 'Right Day Merchant', points: 15, wins: 5, point_diff: -250, total_score: 6100, seed_average: 610 }
     ],
     3: [
       { username: 'Dunce Champ', points: 18, wins: 6, point_diff: 300, total_score: 8100, seed_average: 810 },
@@ -201,7 +201,7 @@ function testSeasonAwardsPanel() {
   assert(panel.includes('League Tism: Tism Champ'));
   assert(panel.includes('**The Chosen One**: Chosen'));
   assert(panel.includes('**Most Points Scored**: Dunce Champ - 8,100 scored'));
-  assert(panel.includes('**Israel Award**: Right Day Merchant - 3 wins, -250 diff, 6,100 scored'));
+  assert(panel.includes('**Israel Award**: Right Day Merchant - 5 wins, -250 diff, 6,100 scored'));
 }
 
 function testLiveAverageResolverExport() {
