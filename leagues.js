@@ -26,15 +26,6 @@ function compareDate(a, b) {
   return a.localeCompare(b);
 }
 
-function shuffle(arr) {
-  const a = arr.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
 function latestUsername(rows) {
   return rows.slice().sort((a, b) => compareDate(a.date_str, b.date_str))[rows.length - 1].username;
 }
@@ -80,8 +71,8 @@ function seedInitialMemberships(players) {
 function rankStandings(rows) {
   return rows.slice().sort((a, b) =>
     b.points - a.points ||
-    b.point_diff - a.point_diff ||
     b.total_score - a.total_score ||
+    b.point_diff - a.point_diff ||
     b.seed_average - a.seed_average ||
     a.username.localeCompare(b.username)
   );
@@ -111,6 +102,27 @@ function applyPromotionRelegation(memberships, standingsByLeague, newPlayers) {
   return [...next.values()];
 }
 
+function generateRoundRobinRounds(members) {
+  if (members.length === 1) return [[[members[0], null]]];
+  if (members.length < 1) return [];
+  const slots = members.slice();
+  if (slots.length % 2 === 1) slots.push(null);
+  const rounds = [];
+
+  for (let round = 0; round < slots.length - 1; round++) {
+    const pairs = [];
+    for (let i = 0; i < slots.length / 2; i++) {
+      const a = slots[i];
+      const b = slots[slots.length - 1 - i];
+      if (a || b) pairs.push([a, b]);
+    }
+    rounds.push(pairs);
+    slots.splice(1, 0, slots.pop());
+  }
+
+  return rounds;
+}
+
 function generateSeasonSchedule(memberships, startDate, seasonId = null) {
   const schedule = [];
   const byLeague = new Map();
@@ -123,26 +135,24 @@ function generateSeasonSchedule(memberships, startDate, seasonId = null) {
     const dateStr = dateAdd(startDate, day);
     for (const [leagueLevel, members] of byLeague.entries()) {
       const sorted = members.slice().sort((a, b) => a.user_id.localeCompare(b.user_id));
-      let pool = sorted.slice();
+      const rounds = generateRoundRobinRounds(sorted);
+      const round = rounds[day % rounds.length] || [];
 
-      if (pool.length % 2 === 1) {
-        const averagePlayer = sorted[day % sorted.length];
-        schedule.push({
-          season_id: seasonId,
-          date_str: dateStr,
-          league_level: leagueLevel,
-          user_id: averagePlayer.user_id,
-          opponent_user_id: null,
-          opponent_type: AVERAGE_OPPONENT
-        });
-        pool = pool.filter(member => member.user_id !== averagePlayer.user_id);
-      }
+      for (const [a, b] of round) {
+        if (!a || !b) {
+          const averagePlayer = a || b;
+          if (!averagePlayer) continue;
+          schedule.push({
+            season_id: seasonId,
+            date_str: dateStr,
+            league_level: leagueLevel,
+            user_id: averagePlayer.user_id,
+            opponent_user_id: null,
+            opponent_type: AVERAGE_OPPONENT
+          });
+          continue;
+        }
 
-      const paired = shuffle(pool);
-      for (let i = 0; i < paired.length; i += 2) {
-        const a = paired[i];
-        const b = paired[i + 1];
-        if (!a || !b) continue;
         schedule.push({
           season_id: seasonId,
           date_str: dateStr,
@@ -340,7 +350,43 @@ async function insertSeason(pool, seasonNumber, startDate, memberships) {
   return season;
 }
 
-async function buildStandings(pool, seasonId) {
+async function getLeagueAverageRows(pool, seasonId) {
+  const { rows } = await pool.query(
+    `WITH average_leagues AS (
+       SELECT DISTINCT league_level
+       FROM league_matchups
+       WHERE season_id = $1
+         AND opponent_type = $2
+     )
+     SELECT
+       al.league_level,
+       'AVERAGE:' || al.league_level AS user_id,
+       'League Average' AS username,
+       0::float AS seed_average,
+       COALESCE(SUM(CASE
+         WHEN r.result = 'L' THEN 3
+         WHEN r.result = 'T' THEN 1
+         ELSE 0
+       END), 0)::int AS points,
+       COALESCE(SUM(CASE WHEN r.result = 'L' THEN 1 ELSE 0 END), 0)::int AS wins,
+       COALESCE(SUM(CASE WHEN r.result = 'W' THEN 1 ELSE 0 END), 0)::int AS losses,
+       COALESCE(SUM(CASE WHEN r.result = 'T' THEN 1 ELSE 0 END), 0)::int AS ties,
+       COALESCE(-SUM(r.point_diff), 0)::float AS point_diff,
+       COALESCE(SUM(r.opponent_score), 0)::float AS total_score,
+       TRUE AS is_average
+     FROM average_leagues al
+     LEFT JOIN league_results r
+       ON r.season_id = $1
+      AND r.league_level = al.league_level
+      AND r.opponent_type = $2
+     GROUP BY al.league_level`,
+    [seasonId, AVERAGE_OPPONENT]
+  );
+  return rows;
+}
+
+async function buildStandings(pool, seasonId, options = {}) {
+  const { includeAverage = false } = options;
   const { rows } = await pool.query(
     `SELECT
        m.user_id,
@@ -352,7 +398,8 @@ async function buildStandings(pool, seasonId) {
        COALESCE(SUM(CASE WHEN r.result = 'L' THEN 1 ELSE 0 END), 0)::int AS losses,
        COALESCE(SUM(CASE WHEN r.result = 'T' THEN 1 ELSE 0 END), 0)::int AS ties,
        COALESCE(SUM(r.point_diff), 0)::float AS point_diff,
-       COALESCE(SUM(r.score), 0)::int AS total_score
+       COALESCE(SUM(r.score), 0)::float AS total_score,
+       FALSE AS is_average
      FROM league_memberships m
      LEFT JOIN league_results r
        ON r.season_id = m.season_id AND r.user_id = m.user_id
@@ -363,7 +410,8 @@ async function buildStandings(pool, seasonId) {
   );
 
   const byLeague = {};
-  for (const row of rows) {
+  const averageRows = includeAverage ? await getLeagueAverageRows(pool, seasonId) : [];
+  for (const row of [...rows, ...averageRows]) {
     if (!byLeague[row.league_level]) byLeague[row.league_level] = [];
     byLeague[row.league_level].push(row);
   }
@@ -1132,6 +1180,7 @@ async function buildDailyLeagueMessages(pool, resultDate, scheduleDate) {
   const standingsSeason = finalized.season || scheduleInfo.season;
   if (!standingsSeason) return { messages: [], reactionTargets: [] };
   const standings = await buildStandings(pool, standingsSeason.id);
+  const displayStandings = await buildStandings(pool, standingsSeason.id, { includeAverage: true });
   const titles = await getLeagueTitleTracker(pool);
   const awards = finalized.season && resultDate === finalized.season.end_date
     ? buildSeasonAwards(standings, finalized.season)
@@ -1140,7 +1189,7 @@ async function buildDailyLeagueMessages(pool, resultDate, scheduleDate) {
   const text = formatLeagueUpdate({
     dateStr: resultDate,
     results: finalized.results || [],
-    standings,
+    standings: displayStandings,
     titles,
     scheduleDate,
     schedule: scheduleInfo.schedule || []
@@ -1157,7 +1206,7 @@ async function buildCurrentLeagueMessages(pool, dateStr) {
   const scheduleInfo = await getScheduleForDate(pool, viewDate);
   const season = scheduleInfo.season;
   if (!season) return { messages: [] };
-  const standings = await buildStandings(pool, season.id);
+  const standings = await buildStandings(pool, season.id, { includeAverage: true });
   const titles = await getLeagueTitleTracker(pool);
   const results = await getLeagueResultsForDate(pool, season.id, dateStr);
   const text = formatLeagueUpdate({

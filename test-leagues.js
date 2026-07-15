@@ -70,6 +70,36 @@ function testScheduleGeneration() {
     assert.strictEqual(schedule.filter(m => m.date_str === date && m.league_level === 1).length, 3);
     assert.strictEqual(schedule.filter(m => m.date_str === date && m.league_level === 2).length, 2);
   }
+
+  const topLeague = ['a', 'b', 'c', 'd', 'e'].map(user_id => ({ user_id, league_level: 1 }));
+  const topSchedule = generateSeasonSchedule(topLeague, '2026-06-01', 1);
+  const topPairs = pairCounts(topSchedule.filter(m => m.opponent_type === 'USER'));
+  assert.strictEqual(topPairs.size, 10);
+  for (const count of topPairs.values()) assert.strictEqual(count, 2);
+  for (const member of topLeague) {
+    assert.strictEqual(topSchedule.filter(m => m.user_id === member.user_id && m.opponent_type === AVERAGE_OPPONENT).length, 2);
+  }
+
+  const soloSchedule = generateSeasonSchedule([{ user_id: 'solo', league_level: 3 }], '2026-06-01', 1);
+  assert.strictEqual(soloSchedule.filter(m => m.opponent_type === AVERAGE_OPPONENT).length, 10);
+
+  const dunceLeague = Array.from({ length: 10 }, (_, idx) => ({ user_id: `d${idx}`, league_level: 3 }));
+  const dunceSchedule = generateSeasonSchedule(dunceLeague, '2026-06-01', 1);
+  const duncePairs = pairCounts(dunceSchedule);
+  assert.strictEqual(duncePairs.size, 45);
+  for (const count of duncePairs.values()) assert(count >= 1);
+  assert.strictEqual(dunceSchedule.filter(m => m.opponent_type === AVERAGE_OPPONENT).length, 0);
+}
+
+function pairCounts(schedule) {
+  const counts = new Map();
+  for (const row of schedule) {
+    if (row.opponent_type !== 'USER') continue;
+    if (row.user_id > row.opponent_user_id) continue;
+    const key = [row.user_id, row.opponent_user_id].sort().join(':');
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return counts;
 }
 
 function testResultsAndStandings() {
@@ -82,7 +112,7 @@ function testResultsAndStandings() {
     { username: 'A', points: 6, point_diff: 5, total_score: 80, seed_average: 700 },
     { username: 'C', points: 3, point_diff: 100, total_score: 1000, seed_average: 900 }
   ]);
-  assert.strictEqual(standings[0].username, 'A');
+  assert.strictEqual(standings[0].username, 'B');
 }
 
 function testPromotionRelegation() {
@@ -154,6 +184,14 @@ function testLeagueNamesAndTitles() {
         ties: 0,
         point_diff: 123.4,
         total_score: 8123
+      }, {
+        username: 'League Average',
+        points: 3,
+        wins: 1,
+        losses: 1,
+        ties: 0,
+        point_diff: -12,
+        total_score: 1600
       }]
     },
     titles: { 1: [{ username: 'A', titles: 2 }] },
@@ -163,6 +201,7 @@ function testLeagueNamesAndTitles() {
   assert(message.includes('**Titles**'));
   assert(message.includes('League Tism: A x2'));
   assert(message.includes('8,123 scored | A'));
+  assert(message.includes('1,600 scored | League Average'));
 }
 
 function testLeagueReminderMessage() {
