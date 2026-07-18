@@ -328,6 +328,24 @@ function testLeagueSections() {
     dateStr: '2026-07-17', results: [], standings: {}, titles: {}, scheduleDate: '2026-07-18', schedule: []
   });
   assert(!noDay.primary.includes('Day '));
+
+  // Rollover day: "Final Standings" replaces the day counter, and the schedule
+  // announces the incoming season.
+  const wrap = formatLeagueSections({
+    dateStr: '2026-07-18', results: [], standings: {}, titles: {}, scheduleDate: '2026-07-19', schedule: [],
+    seasonDay: 10, seasonNumber: 3, finalStandings: true, nextSeasonNumber: 4
+  });
+  assert(wrap.primary.includes('Season 3 · Final Standings'));
+  assert(!wrap.primary.includes('Day 10 of 10'));
+  assert(wrap.secondary.includes('**Schedule - 2026-07-19**\nSeason 4 starts today!'));
+
+  // Non-rollover posts must not show either label.
+  const midSeason = formatLeagueSections({
+    dateStr: '2026-07-17', results: [], standings: {}, titles: {}, scheduleDate: '2026-07-18', schedule: [],
+    seasonDay: 5, seasonNumber: 3
+  });
+  assert(!midSeason.primary.includes('Final Standings'));
+  assert(!midSeason.secondary.includes('starts today'));
 }
 
 // Season rollover must finalize the previous season's last day (no-shows, forfeits,

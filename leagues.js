@@ -1139,9 +1139,11 @@ function formatSeasonAwardsPanel(awards) {
 // Builds the daily league post as two logical Discord messages:
 //   primary   = header (+ optional "Season N · Day D of 10" line) + Results + Tables
 //   secondary = Titles + Schedule
-function formatLeagueSections({ dateStr, results, standings, titles, scheduleDate, schedule, seasonDay, seasonNumber }) {
+function formatLeagueSections({ dateStr, results, standings, titles, scheduleDate, schedule, seasonDay, seasonNumber, finalStandings, nextSeasonNumber }) {
   const primary = [`**MapTap Leagues - ${dateStr}**`];
-  if (seasonDay) {
+  if (finalStandings) {
+    primary.push(seasonNumber ? `Season ${seasonNumber} · Final Standings` : 'Final Standings');
+  } else if (seasonDay) {
     primary.push(seasonNumber
       ? `Season ${seasonNumber} · Day ${seasonDay} of ${SEASON_LENGTH_DAYS}`
       : `Day ${seasonDay} of ${SEASON_LENGTH_DAYS}`);
@@ -1185,6 +1187,7 @@ function formatLeagueSections({ dateStr, results, standings, titles, scheduleDat
   else secondary.push('_No league titles awarded yet._');
 
   secondary.push('', `**Schedule - ${scheduleDate}**`);
+  if (nextSeasonNumber) secondary.push(`Season ${nextSeasonNumber} starts today!`);
   for (const level of [1, 2, 3]) {
     const leagueSchedule = schedule.filter(row => row.league_level === level);
     if (!leagueSchedule.length) continue;
@@ -1235,9 +1238,10 @@ async function buildDailyLeagueMessages(pool, resultDate, scheduleDate) {
   const standings = await buildStandings(pool, standingsSeason.id);
   const displayStandings = await buildStandings(pool, standingsSeason.id, { includeAverage: true });
   const titles = await getLeagueTitleTracker(pool);
-  const awards = finalized.season && resultDate === finalized.season.end_date
-    ? buildSeasonAwards(standings, finalized.season)
-    : null;
+  // Rollover day: the results/tables wrap up the completing season while the
+  // schedule belongs to the freshly created next season.
+  const isSeasonWrap = Boolean(finalized.season && resultDate === finalized.season.end_date);
+  const awards = isSeasonWrap ? buildSeasonAwards(standings, finalized.season) : null;
   const awardsText = formatSeasonAwardsPanel(awards);
   const { primary, secondary } = formatLeagueSections({
     dateStr: resultDate,
@@ -1247,7 +1251,9 @@ async function buildDailyLeagueMessages(pool, resultDate, scheduleDate) {
     scheduleDate,
     schedule: scheduleInfo.schedule || [],
     seasonDay: seasonDayNumber(standingsSeason, scheduleDate),
-    seasonNumber: standingsSeason.season_number
+    seasonNumber: standingsSeason.season_number,
+    finalStandings: isSeasonWrap,
+    nextSeasonNumber: isSeasonWrap ? scheduleInfo.season?.season_number : null
   });
   const messages = [primary, secondary].flatMap(section => splitDiscordMessage(section));
   if (awardsText) messages.push(awardsText);
