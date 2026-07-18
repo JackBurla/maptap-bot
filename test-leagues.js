@@ -8,6 +8,7 @@ const {
   applyPromotionRelegation,
   assignRoundIndices,
   buildPlayerAverages,
+  createNextSeason,
   buildSeasonAwards,
   dateAdd,
   formatLeagueReminder,
@@ -90,7 +91,8 @@ function testScheduleGeneration() {
   const dunceSchedule = generateSeasonSchedule(dunceLeague, '2026-06-01', 1);
   const duncePairs = pairCounts(dunceSchedule);
   assert.strictEqual(duncePairs.size, 45);
-  for (const count of duncePairs.values()) assert(count >= 1);
+  // 10 days x 5 pairs per round = 50 total meetings (full round-robin + one rematch round).
+  assert.strictEqual([...duncePairs.values()].reduce((sum, count) => sum + count, 0), 50);
   assert.strictEqual(dunceSchedule.filter(m => m.opponent_type === AVERAGE_OPPONENT).length, 0);
 }
 
@@ -328,6 +330,35 @@ function testLeagueSections() {
   assert(!noDay.primary.includes('Day '));
 }
 
+// Season rollover must finalize the previous season's last day (no-shows, forfeits,
+// average matchups) BEFORE standings are read for titles and promotion/relegation.
+// Regression test: uses a stub pool that records query order.
+async function testRolloverFinalizesBeforeStandings() {
+  const previousSeason = { id: 1, season_number: 1, start_date: '2026-07-09', end_date: '2026-07-18' };
+  const queryLog = [];
+  const stubPool = {
+    async query(sql, params = []) {
+      queryLog.push(sql);
+      if (sql.includes('FROM league_seasons') && sql.includes('start_date <= $1')) {
+        return { rows: [previousSeason] }; // getSeasonForDate inside finalizeLeagueDate
+      }
+      if (sql.includes('INSERT INTO league_seasons')) {
+        return { rows: [{ id: 2, season_number: params[0], start_date: params[1], end_date: params[2], status: 'active' }] };
+      }
+      return { rows: [] };
+    }
+  };
+
+  const season = await createNextSeason(stubPool, '2026-07-19', previousSeason);
+  assert.strictEqual(season.season_number, 2);
+
+  const finalizeIdx = queryLog.findIndex(sql => sql.includes('FROM league_matchups'));
+  const standingsIdx = queryLog.findIndex(sql => sql.includes('FROM league_memberships'));
+  assert(finalizeIdx !== -1, 'finalizeLeagueDate should query the previous season\'s matchups');
+  assert(standingsIdx !== -1, 'createNextSeason should query standings');
+  assert(finalizeIdx < standingsIdx, 'final day must be finalized before standings are computed');
+}
+
 testInitialSeeding();
 testLeagueExclusions();
 testScheduleGeneration();
@@ -342,5 +373,9 @@ testLiveAverageResolverExport();
 testAssignRoundIndices();
 testSeasonDayNumber();
 testLeagueSections();
-
-console.log('league tests passed');
+testRolloverFinalizesBeforeStandings()
+  .then(() => console.log('league tests passed'))
+  .catch(err => {
+    console.error(err);
+    process.exit(1);
+  });

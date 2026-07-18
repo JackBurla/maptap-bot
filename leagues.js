@@ -514,6 +514,12 @@ async function createInitialSeason(pool, startDate) {
 }
 
 async function createNextSeason(pool, startDate, previousSeason) {
+  // Finalize the previous season's last day before computing standings, so titles,
+  // promotion/relegation, and no-show exclusions include midnight-finalized results
+  // (no-shows, forfeits, unresolved average matchups). This guards every entry point
+  // that can trigger a rollover (daily cron, startup, live score posts, /leagues).
+  // finalizeLeagueDate is idempotent, so re-running it here is safe.
+  await finalizeLeagueDate(pool, previousSeason.end_date);
   const standings = await buildStandings(pool, previousSeason.id);
   await recordLeagueTitles(pool, previousSeason);
   const removedForNoShows = await recordNoShowExclusions(pool, previousSeason);
@@ -1289,6 +1295,7 @@ module.exports = {
   buildPlayerAverages,
   buildSeasonAwards,
   buildStandings,
+  createNextSeason,
   dateAdd,
   dateDiff,
   ensureLeagueSeasonForDate,
