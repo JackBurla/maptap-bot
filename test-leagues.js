@@ -6,15 +6,18 @@ const {
   LEAGUE_NAMES,
   NO_SHOW_REMOVAL_THRESHOLD,
   applyPromotionRelegation,
+  assignRoundIndices,
   buildPlayerAverages,
   buildSeasonAwards,
   dateAdd,
   formatLeagueReminder,
+  formatLeagueSections,
   formatLeagueUpdate,
   formatSeasonAwardsPanel,
   formatTitleTracker,
   generateSeasonSchedule,
   rankStandings,
+  seasonDayNumber,
   resolveLiveAverageMatchupsForScore,
   resultForScores,
   seedInitialMemberships,
@@ -249,6 +252,82 @@ function testLiveAverageResolverExport() {
   assert.strictEqual(typeof resolveLiveAverageMatchupsForScore, 'function');
 }
 
+function testAssignRoundIndices() {
+  assert.deepStrictEqual(assignRoundIndices(0, 10), []);
+
+  // Small league: full round-robin runs exactly twice over 10 days.
+  const small = assignRoundIndices(5, 10);
+  assert.strictEqual(small.length, 10);
+  for (let i = 0; i < 5; i++) {
+    assert.strictEqual(small.filter(idx => idx === i).length, 2);
+  }
+
+  // Dunce (10 players -> 9 rounds): every round once, plus exactly one repeat.
+  const dunce = assignRoundIndices(9, 10);
+  assert.strictEqual(dunce.length, 10);
+  for (let i = 0; i < 9; i++) assert(dunce.includes(i));
+  const dunceRepeats = [...new Set(dunce)].filter(i => dunce.filter(x => x === i).length > 1);
+  assert.strictEqual(dunceRepeats.length, 1);
+
+  // Middle case (7 rounds): rematch rounds chosen evenly across the cycle (0, 2, 4), not 0, 1, 2.
+  const mid = assignRoundIndices(7, 10);
+  assert.strictEqual(mid.length, 10);
+  const midRepeats = [...new Set(mid)].filter(i => mid.filter(x => x === i).length > 1).sort((a, b) => a - b);
+  assert.deepStrictEqual(midRepeats, [0, 2, 4]);
+
+  // Large league (12 rounds > 10 days): 10 distinct rounds, no pair meets twice.
+  const large = assignRoundIndices(12, 10);
+  assert.strictEqual(large.length, 10);
+  assert.strictEqual(new Set(large).size, 10);
+}
+
+function testSeasonDayNumber() {
+  const season = { start_date: '2026-06-29' };
+  assert.strictEqual(seasonDayNumber(null, '2026-06-29'), null);
+  assert.strictEqual(seasonDayNumber(season, '2026-06-29'), 1);
+  assert.strictEqual(seasonDayNumber(season, '2026-07-03'), 5);
+  assert.strictEqual(seasonDayNumber(season, '2026-06-28'), 1); // clamps below 1
+  assert.strictEqual(seasonDayNumber(season, '2026-07-20'), 10); // clamps above SEASON_LENGTH_DAYS
+}
+
+function testLeagueSections() {
+  const { primary, secondary } = formatLeagueSections({
+    dateStr: '2026-07-17',
+    results: [{ league_level: 1, opponent_type: AVERAGE_OPPONENT, username: 'A', score: 900, opponent_score: 850, result: 'W' }],
+    standings: {
+      1: [{ username: 'A', points: 6, wins: 2, losses: 0, ties: 0, point_diff: 50, total_score: 8000 }]
+    },
+    titles: { 1: [{ username: 'A', titles: 2 }] },
+    scheduleDate: '2026-07-18',
+    schedule: [{ league_level: 1, opponent_type: AVERAGE_OPPONENT, username: 'A' }],
+    seasonDay: 5,
+    seasonNumber: 3
+  });
+
+  // Primary = header (+ day line) + Results + Tables.
+  assert(primary.includes('**MapTap Leagues - 2026-07-17**'));
+  assert(primary.includes('Season 3 · Day 5 of 10'));
+  assert(primary.includes('**Results**'));
+  assert(primary.includes('**Tables**'));
+  assert(primary.includes('8,000 scored | A'));
+  assert(!primary.includes('**Titles**'));
+  assert(!primary.includes('**Schedule'));
+
+  // Secondary = Titles + Schedule only.
+  assert(secondary.includes('**Titles**'));
+  assert(secondary.includes('League Tism: A x2'));
+  assert(secondary.includes('**Schedule - 2026-07-18**'));
+  assert(secondary.includes('A vs League Average'));
+  assert(!secondary.includes('**Results**'));
+  assert(!secondary.includes('**Tables**'));
+
+  // Day line is omitted when no season day is supplied (keeps other callers unchanged).
+  const noDay = formatLeagueSections({
+    dateStr: '2026-07-17', results: [], standings: {}, titles: {}, scheduleDate: '2026-07-18', schedule: []
+  });
+  assert(!noDay.primary.includes('Day '));
+}
+
 testInitialSeeding();
 testLeagueExclusions();
 testScheduleGeneration();
@@ -260,5 +339,8 @@ testLeagueNamesAndTitles();
 testLeagueReminderMessage();
 testSeasonAwardsPanel();
 testLiveAverageResolverExport();
+testAssignRoundIndices();
+testSeasonDayNumber();
+testLeagueSections();
 
 console.log('league tests passed');
