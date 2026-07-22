@@ -6,15 +6,19 @@ const {
   LEAGUE_NAMES,
   NO_SHOW_REMOVAL_THRESHOLD,
   applyPromotionRelegation,
+  assignRoundIndices,
   buildPlayerAverages,
+  createNextSeason,
   buildSeasonAwards,
   dateAdd,
   formatLeagueReminder,
+  formatLeagueSections,
   formatLeagueUpdate,
   formatSeasonAwardsPanel,
   formatTitleTracker,
   generateSeasonSchedule,
   rankStandings,
+  seasonDayNumber,
   resolveLiveAverageMatchupsForScore,
   resultForScores,
   seedInitialMemberships,
@@ -87,7 +91,8 @@ function testScheduleGeneration() {
   const dunceSchedule = generateSeasonSchedule(dunceLeague, '2026-06-01', 1);
   const duncePairs = pairCounts(dunceSchedule);
   assert.strictEqual(duncePairs.size, 45);
-  for (const count of duncePairs.values()) assert(count >= 1);
+  // 10 days x 5 pairs per round = 50 total meetings (full round-robin + one rematch round).
+  assert.strictEqual([...duncePairs.values()].reduce((sum, count) => sum + count, 0), 50);
   assert.strictEqual(dunceSchedule.filter(m => m.opponent_type === AVERAGE_OPPONENT).length, 0);
 }
 
@@ -249,6 +254,129 @@ function testLiveAverageResolverExport() {
   assert.strictEqual(typeof resolveLiveAverageMatchupsForScore, 'function');
 }
 
+function testAssignRoundIndices() {
+  assert.deepStrictEqual(assignRoundIndices(0, 10), []);
+
+  // Small league: full round-robin runs exactly twice over 10 days.
+  const small = assignRoundIndices(5, 10);
+  assert.strictEqual(small.length, 10);
+  for (let i = 0; i < 5; i++) {
+    assert.strictEqual(small.filter(idx => idx === i).length, 2);
+  }
+
+  // Dunce (10 players -> 9 rounds): every round once, plus exactly one repeat.
+  const dunce = assignRoundIndices(9, 10);
+  assert.strictEqual(dunce.length, 10);
+  for (let i = 0; i < 9; i++) assert(dunce.includes(i));
+  const dunceRepeats = [...new Set(dunce)].filter(i => dunce.filter(x => x === i).length > 1);
+  assert.strictEqual(dunceRepeats.length, 1);
+
+  // Middle case (7 rounds): rematch rounds chosen evenly across the cycle (0, 2, 4), not 0, 1, 2.
+  const mid = assignRoundIndices(7, 10);
+  assert.strictEqual(mid.length, 10);
+  const midRepeats = [...new Set(mid)].filter(i => mid.filter(x => x === i).length > 1).sort((a, b) => a - b);
+  assert.deepStrictEqual(midRepeats, [0, 2, 4]);
+
+  // Large league (12 rounds > 10 days): 10 distinct rounds, no pair meets twice.
+  const large = assignRoundIndices(12, 10);
+  assert.strictEqual(large.length, 10);
+  assert.strictEqual(new Set(large).size, 10);
+}
+
+function testSeasonDayNumber() {
+  const season = { start_date: '2026-06-29' };
+  assert.strictEqual(seasonDayNumber(null, '2026-06-29'), null);
+  assert.strictEqual(seasonDayNumber(season, '2026-06-29'), 1);
+  assert.strictEqual(seasonDayNumber(season, '2026-07-03'), 5);
+  assert.strictEqual(seasonDayNumber(season, '2026-06-28'), 1); // clamps below 1
+  assert.strictEqual(seasonDayNumber(season, '2026-07-20'), 10); // clamps above SEASON_LENGTH_DAYS
+}
+
+function testLeagueSections() {
+  const { primary, secondary } = formatLeagueSections({
+    dateStr: '2026-07-17',
+    results: [{ league_level: 1, opponent_type: AVERAGE_OPPONENT, username: 'A', score: 900, opponent_score: 850, result: 'W' }],
+    standings: {
+      1: [{ username: 'A', points: 6, wins: 2, losses: 0, ties: 0, point_diff: 50, total_score: 8000 }]
+    },
+    titles: { 1: [{ username: 'A', titles: 2 }] },
+    scheduleDate: '2026-07-18',
+    schedule: [{ league_level: 1, opponent_type: AVERAGE_OPPONENT, username: 'A' }],
+    seasonDay: 5,
+    seasonNumber: 3
+  });
+
+  // Primary = header (+ day line) + Results + Tables.
+  assert(primary.includes('**MapTap Leagues - 2026-07-17**'));
+  assert(primary.includes('Season 3 · Day 5 of 10'));
+  assert(primary.includes('**Results**'));
+  assert(primary.includes('**Tables**'));
+  assert(primary.includes('8,000 scored | A'));
+  assert(!primary.includes('**Titles**'));
+  assert(!primary.includes('**Schedule'));
+
+  // Secondary = Titles + Schedule only.
+  assert(secondary.includes('**Titles**'));
+  assert(secondary.includes('League Tism: A x2'));
+  assert(secondary.includes('**Schedule - 2026-07-18**'));
+  assert(secondary.includes('A vs League Average'));
+  assert(!secondary.includes('**Results**'));
+  assert(!secondary.includes('**Tables**'));
+
+  // Day line is omitted when no season day is supplied (keeps other callers unchanged).
+  const noDay = formatLeagueSections({
+    dateStr: '2026-07-17', results: [], standings: {}, titles: {}, scheduleDate: '2026-07-18', schedule: []
+  });
+  assert(!noDay.primary.includes('Day '));
+
+  // Rollover day: "Final Standings" replaces the day counter, and the schedule
+  // announces the incoming season.
+  const wrap = formatLeagueSections({
+    dateStr: '2026-07-18', results: [], standings: {}, titles: {}, scheduleDate: '2026-07-19', schedule: [],
+    seasonDay: 10, seasonNumber: 3, finalStandings: true, nextSeasonNumber: 4
+  });
+  assert(wrap.primary.includes('Season 3 · Final Standings'));
+  assert(!wrap.primary.includes('Day 10 of 10'));
+  assert(wrap.secondary.includes('**Schedule - 2026-07-19**\nSeason 4 starts today!'));
+
+  // Non-rollover posts must not show either label.
+  const midSeason = formatLeagueSections({
+    dateStr: '2026-07-17', results: [], standings: {}, titles: {}, scheduleDate: '2026-07-18', schedule: [],
+    seasonDay: 5, seasonNumber: 3
+  });
+  assert(!midSeason.primary.includes('Final Standings'));
+  assert(!midSeason.secondary.includes('starts today'));
+}
+
+// Season rollover must finalize the previous season's last day (no-shows, forfeits,
+// average matchups) BEFORE standings are read for titles and promotion/relegation.
+// Regression test: uses a stub pool that records query order.
+async function testRolloverFinalizesBeforeStandings() {
+  const previousSeason = { id: 1, season_number: 1, start_date: '2026-07-09', end_date: '2026-07-18' };
+  const queryLog = [];
+  const stubPool = {
+    async query(sql, params = []) {
+      queryLog.push(sql);
+      if (sql.includes('FROM league_seasons') && sql.includes('start_date <= $1')) {
+        return { rows: [previousSeason] }; // getSeasonForDate inside finalizeLeagueDate
+      }
+      if (sql.includes('INSERT INTO league_seasons')) {
+        return { rows: [{ id: 2, season_number: params[0], start_date: params[1], end_date: params[2], status: 'active' }] };
+      }
+      return { rows: [] };
+    }
+  };
+
+  const season = await createNextSeason(stubPool, '2026-07-19', previousSeason);
+  assert.strictEqual(season.season_number, 2);
+
+  const finalizeIdx = queryLog.findIndex(sql => sql.includes('FROM league_matchups'));
+  const standingsIdx = queryLog.findIndex(sql => sql.includes('FROM league_memberships'));
+  assert(finalizeIdx !== -1, 'finalizeLeagueDate should query the previous season\'s matchups');
+  assert(standingsIdx !== -1, 'createNextSeason should query standings');
+  assert(finalizeIdx < standingsIdx, 'final day must be finalized before standings are computed');
+}
+
 testInitialSeeding();
 testLeagueExclusions();
 testScheduleGeneration();
@@ -260,5 +388,12 @@ testLeagueNamesAndTitles();
 testLeagueReminderMessage();
 testSeasonAwardsPanel();
 testLiveAverageResolverExport();
-
-console.log('league tests passed');
+testAssignRoundIndices();
+testSeasonDayNumber();
+testLeagueSections();
+testRolloverFinalizesBeforeStandings()
+  .then(() => console.log('league tests passed'))
+  .catch(err => {
+    console.error(err);
+    process.exit(1);
+  });

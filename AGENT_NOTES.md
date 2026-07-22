@@ -114,5 +114,6 @@ The user references insults by number from the **original 19-item list** (before
 - Future season rollover promotes/relegates one player between adjacent divisions and adds new players to League 3.
 - Players with 7+ no-shows in a 10-day season are recorded in `league_exclusions` and left out of future seasons.
 - Completed-season champions are stored in `league_titles` and shown in the daily league message.
+- Season rollover (`createNextSeason`) finalizes the previous season's last day **before** computing standings, so titles, promotion/relegation, and no-show exclusions include midnight-finalized no-shows/forfeits/average results. Keep this ordering — rollover can be triggered from multiple entry points (daily cron, startup, live score posts, `/leagues`) and never re-runs for a season.
 - Live W/L reactions only happen for completed head-to-head matchups. Average matchups and forfeits finalize at the 12:01 AM league cron.
 - Average-matchup W/L reactions can also happen live once the average player and every other player in that league has submitted.

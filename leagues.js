@@ -26,6 +26,18 @@ function compareDate(a, b) {
   return a.localeCompare(b);
 }
 
+function dateDiff(a, b) {
+  const [ya, ma, da] = a.split('-').map(Number);
+  const [yb, mb, db] = b.split('-').map(Number);
+  return Math.round((Date.UTC(yb, mb - 1, db) - Date.UTC(ya, ma - 1, da)) / 86400000);
+}
+
+function seasonDayNumber(season, dateStr) {
+  if (!season) return null;
+  const n = dateDiff(season.start_date, dateStr) + 1;
+  return Math.min(Math.max(n, 1), SEASON_LENGTH_DAYS);
+}
+
 function latestUsername(rows) {
   return rows.slice().sort((a, b) => compareDate(a.date_str, b.date_str))[rows.length - 1].username;
 }
@@ -123,6 +135,24 @@ function generateRoundRobinRounds(members) {
   return rounds;
 }
 
+// Maps each of `dayCount` season days to a round-robin round index. Full round-robin
+// passes are scheduled first; any leftover days replay rounds chosen evenly across the
+// cycle (so rematches are distributed, not front-loaded onto the earliest rounds).
+// Returns an array of length `dayCount` for roundCount >= 1, or [] when roundCount === 0.
+function assignRoundIndices(roundCount, dayCount) {
+  if (roundCount === 0) return [];
+  const indices = [];
+  const fullPasses = Math.floor(dayCount / roundCount);
+  for (let p = 0; p < fullPasses; p++) {
+    for (let i = 0; i < roundCount; i++) indices.push(i);
+  }
+  const remaining = dayCount - fullPasses * roundCount;
+  for (let k = 0; k < remaining; k++) {
+    indices.push(Math.floor((k * roundCount) / remaining));
+  }
+  return indices;
+}
+
 function generateSeasonSchedule(memberships, startDate, seasonId = null) {
   const schedule = [];
   const byLeague = new Map();
@@ -131,12 +161,15 @@ function generateSeasonSchedule(memberships, startDate, seasonId = null) {
     byLeague.get(member.league_level).push(member);
   }
 
-  for (let day = 0; day < SEASON_LENGTH_DAYS; day++) {
-    const dateStr = dateAdd(startDate, day);
-    for (const [leagueLevel, members] of byLeague.entries()) {
-      const sorted = members.slice().sort((a, b) => a.user_id.localeCompare(b.user_id));
-      const rounds = generateRoundRobinRounds(sorted);
-      const round = rounds[day % rounds.length] || [];
+  for (const [leagueLevel, members] of byLeague.entries()) {
+    const sorted = members.slice().sort((a, b) => a.user_id.localeCompare(b.user_id));
+    const rounds = generateRoundRobinRounds(sorted);
+    if (!rounds.length) continue;
+    const roundIndices = assignRoundIndices(rounds.length, SEASON_LENGTH_DAYS);
+
+    for (let day = 0; day < SEASON_LENGTH_DAYS; day++) {
+      const dateStr = dateAdd(startDate, day);
+      const round = rounds[roundIndices[day]] || [];
 
       for (const [a, b] of round) {
         if (!a || !b) {
@@ -481,6 +514,12 @@ async function createInitialSeason(pool, startDate) {
 }
 
 async function createNextSeason(pool, startDate, previousSeason) {
+  // Finalize the previous season's last day before computing standings, so titles,
+  // promotion/relegation, and no-show exclusions include midnight-finalized results
+  // (no-shows, forfeits, unresolved average matchups). This guards every entry point
+  // that can trigger a rollover (daily cron, startup, live score posts, /leagues).
+  // finalizeLeagueDate is idempotent, so re-running it here is safe.
+  await finalizeLeagueDate(pool, previousSeason.end_date);
   const standings = await buildStandings(pool, previousSeason.id);
   await recordLeagueTitles(pool, previousSeason);
   const removedForNoShows = await recordNoShowExclusions(pool, previousSeason);
@@ -1097,14 +1136,25 @@ function formatSeasonAwardsPanel(awards) {
   return lines.join('\n');
 }
 
-function formatLeagueUpdate({ dateStr, results, standings, titles, scheduleDate, schedule }) {
-  const sections = [`**MapTap Leagues - ${dateStr}**`];
+// Builds the daily league post as two logical Discord messages:
+//   primary   = header (+ optional "Season N · Day D of 10" line) + Results + Tables
+//   secondary = Titles + Schedule
+function formatLeagueSections({ dateStr, results, standings, titles, scheduleDate, schedule, seasonDay, seasonNumber, finalStandings, nextSeasonNumber }) {
+  const primary = [`**MapTap Leagues - ${dateStr}**`];
+  if (finalStandings) {
+    primary.push(seasonNumber ? `Season ${seasonNumber} · Final Standings` : 'Final Standings');
+  } else if (seasonDay) {
+    primary.push(seasonNumber
+      ? `Season ${seasonNumber} · Day ${seasonDay} of ${SEASON_LENGTH_DAYS}`
+      : `Day ${seasonDay} of ${SEASON_LENGTH_DAYS}`);
+  }
 
-  sections.push('**Results**');
+  primary.push('**Results**');
+  const resultsHeaderIndex = primary.length - 1;
   for (const level of [1, 2, 3]) {
     const leagueResults = results.filter(row => row.league_level === level);
     if (!leagueResults.length) continue;
-    sections.push(`__${LEAGUE_NAMES[level]}__`);
+    primary.push(`__${LEAGUE_NAMES[level]}__`);
     const seenPairs = new Set();
     for (const row of leagueResults) {
       if (row.opponent_type === 'USER') {
@@ -1113,48 +1163,54 @@ function formatLeagueUpdate({ dateStr, results, standings, titles, scheduleDate,
         seenPairs.add(key);
         const other = leagueResults.find(r => r.user_id === row.opponent_user_id);
         if (!other) continue;
-        sections.push(`${row.username} ${formatScore(row.score)} - ${formatScore(other.score)} ${other.username}`);
+        primary.push(`${row.username} ${formatScore(row.score)} - ${formatScore(other.score)} ${other.username}`);
       } else {
-        sections.push(`${row.username} ${formatScore(row.score)} vs Avg ${formatScore(row.opponent_score)} (${row.result})`);
+        primary.push(`${row.username} ${formatScore(row.score)} vs Avg ${formatScore(row.opponent_score)} (${row.result})`);
       }
     }
   }
-  if (sections[sections.length - 1] === '**Results**') sections.push('_No league results finalized._');
+  if (primary.length - 1 === resultsHeaderIndex) primary.push('_No league results finalized._');
 
-  sections.push('', '**Tables**');
+  primary.push('', '**Tables**');
   for (const level of [1, 2, 3]) {
     const table = standings[level] || [];
     if (!table.length) continue;
-    sections.push(`__${LEAGUE_NAMES[level]}__`);
+    primary.push(`__${LEAGUE_NAMES[level]}__`);
     for (const row of table) {
-      sections.push(`${row.points} pts | ${formatRecord(row)} | ${formatPointDiff(row.point_diff)} | ${formatScore(row.total_score)} scored | ${row.username}`);
+      primary.push(`${row.points} pts | ${formatRecord(row)} | ${formatPointDiff(row.point_diff)} | ${formatScore(row.total_score)} scored | ${row.username}`);
     }
   }
 
-  sections.push('', '**Titles**');
+  const secondary = ['**Titles**'];
   const titleLines = formatTitleTracker(titles || {});
-  if (titleLines.length) sections.push(...titleLines);
-  else sections.push('_No league titles awarded yet._');
+  if (titleLines.length) secondary.push(...titleLines);
+  else secondary.push('_No league titles awarded yet._');
 
-  sections.push('', `**Schedule - ${scheduleDate}**`);
+  secondary.push('', `**Schedule - ${scheduleDate}**`);
+  if (nextSeasonNumber) secondary.push(`Season ${nextSeasonNumber} starts today!`);
   for (const level of [1, 2, 3]) {
     const leagueSchedule = schedule.filter(row => row.league_level === level);
     if (!leagueSchedule.length) continue;
-    sections.push(`__${LEAGUE_NAMES[level]}__`);
+    secondary.push(`__${LEAGUE_NAMES[level]}__`);
     const seenPairs = new Set();
     for (const row of leagueSchedule) {
       if (row.opponent_type === AVERAGE_OPPONENT) {
-        sections.push(`${row.username} vs League Average`);
+        secondary.push(`${row.username} vs League Average`);
         continue;
       }
       const key = [row.user_id, row.opponent_user_id].sort().join(':');
       if (seenPairs.has(key)) continue;
       seenPairs.add(key);
-      sections.push(`${row.username} vs ${row.opponent_username}`);
+      secondary.push(`${row.username} vs ${row.opponent_username}`);
     }
   }
 
-  return sections.join('\n');
+  return { primary: primary.join('\n'), secondary: secondary.join('\n') };
+}
+
+function formatLeagueUpdate(args) {
+  const { primary, secondary } = formatLeagueSections(args);
+  return `${primary}\n\n${secondary}`;
 }
 
 function splitDiscordMessage(text, maxLength = 1900) {
@@ -1182,20 +1238,27 @@ async function buildDailyLeagueMessages(pool, resultDate, scheduleDate) {
   const standings = await buildStandings(pool, standingsSeason.id);
   const displayStandings = await buildStandings(pool, standingsSeason.id, { includeAverage: true });
   const titles = await getLeagueTitleTracker(pool);
-  const awards = finalized.season && resultDate === finalized.season.end_date
-    ? buildSeasonAwards(standings, finalized.season)
-    : null;
+  // Rollover day: the results/tables wrap up the completing season while the
+  // schedule belongs to the freshly created next season.
+  const isSeasonWrap = Boolean(finalized.season && resultDate === finalized.season.end_date);
+  const awards = isSeasonWrap ? buildSeasonAwards(standings, finalized.season) : null;
   const awardsText = formatSeasonAwardsPanel(awards);
-  const text = formatLeagueUpdate({
+  const { primary, secondary } = formatLeagueSections({
     dateStr: resultDate,
     results: finalized.results || [],
     standings: displayStandings,
     titles,
     scheduleDate,
-    schedule: scheduleInfo.schedule || []
+    schedule: scheduleInfo.schedule || [],
+    seasonDay: seasonDayNumber(standingsSeason, scheduleDate),
+    seasonNumber: standingsSeason.season_number,
+    finalStandings: isSeasonWrap,
+    nextSeasonNumber: isSeasonWrap ? scheduleInfo.season?.season_number : null
   });
+  const messages = [primary, secondary].flatMap(section => splitDiscordMessage(section));
+  if (awardsText) messages.push(awardsText);
   return {
-    messages: awardsText ? [...splitDiscordMessage(text), awardsText] : splitDiscordMessage(text),
+    messages,
     awardMentionUserIds: seasonAwardUserIds(awards),
     reactionTargets: finalized.reactionTargets || []
   };
@@ -1209,15 +1272,17 @@ async function buildCurrentLeagueMessages(pool, dateStr) {
   const standings = await buildStandings(pool, season.id, { includeAverage: true });
   const titles = await getLeagueTitleTracker(pool);
   const results = await getLeagueResultsForDate(pool, season.id, dateStr);
-  const text = formatLeagueUpdate({
+  const { primary, secondary } = formatLeagueSections({
     dateStr: viewDate,
     results,
     standings,
     titles,
     scheduleDate: viewDate,
-    schedule: scheduleInfo.schedule || []
+    schedule: scheduleInfo.schedule || [],
+    seasonDay: seasonDayNumber(season, viewDate),
+    seasonNumber: season.season_number
   });
-  return { messages: splitDiscordMessage(text) };
+  return { messages: [primary, secondary].flatMap(section => splitDiscordMessage(section)) };
 }
 
 module.exports = {
@@ -1230,19 +1295,24 @@ module.exports = {
   SEASON_LENGTH_DAYS,
   WIN_REACTION,
   applyPromotionRelegation,
+  assignRoundIndices,
   buildCurrentLeagueMessages,
   buildDailyLeagueMessages,
   buildPlayerAverages,
   buildSeasonAwards,
   buildStandings,
+  createNextSeason,
   dateAdd,
+  dateDiff,
   ensureLeagueSeasonForDate,
   finalizeLeagueDate,
+  formatLeagueSections,
   formatLeagueUpdate,
   formatLeagueReminder,
   formatSeasonAwardsPanel,
   formatTitleTracker,
   generateSeasonSchedule,
+  seasonDayNumber,
   getLeagueReminderTargets,
   getLeagueTitleTracker,
   rankStandings,
