@@ -146,6 +146,38 @@ function testPromotionRelegation() {
   assert.strictEqual(next.find(p => p.user_id === 'new').league_level, 3);
 }
 
+function testOneTimeExpansionPromotion() {
+  const members = [
+    ...Array.from({ length: 5 }, (_, idx) => ({ user_id: `t${idx}`, username: `T${idx}`, league_level: 1 })),
+    ...Array.from({ length: 5 }, (_, idx) => ({ user_id: `m${idx}`, username: `M${idx}`, league_level: 2 })),
+    ...Array.from({ length: 10 }, (_, idx) => ({ user_id: `d${idx}`, username: `D${idx}`, league_level: 3 }))
+  ];
+  const standings = {
+    1: members
+      .filter(member => member.league_level === 1)
+      .map((member, idx) => ({ ...member, points: 10 - idx, total_score: 1000 - idx, point_diff: 50 - idx, seed_average: 1 })),
+    2: members
+      .filter(member => member.league_level === 2)
+      .map((member, idx) => ({ ...member, points: 10 - idx, total_score: 1000 - idx, point_diff: 50 - idx, seed_average: 1 })),
+    3: members
+      .filter(member => member.league_level === 3)
+      .map((member, idx) => ({ ...member, points: 20 - idx, total_score: 2000 - idx, point_diff: 100 - idx, seed_average: 1 }))
+  };
+
+  const next = applyPromotionRelegation(members, standings, [], { oneTimeExpansion: true });
+  assert.strictEqual(next.filter(member => member.league_level === 1).length, 6);
+  assert.strictEqual(next.filter(member => member.league_level === 2).length, 6);
+  assert.strictEqual(next.filter(member => member.league_level === 3).length, 8);
+  assert.strictEqual(next.find(member => member.user_id === 'm0').league_level, 1);
+  assert.strictEqual(next.find(member => member.user_id === 'm1').league_level, 1);
+  assert.strictEqual(next.find(member => member.user_id === 'd0').league_level, 2);
+  assert.strictEqual(next.find(member => member.user_id === 'd1').league_level, 2);
+  assert.strictEqual(next.find(member => member.user_id === 't4').league_level, 2);
+
+  const schedule = generateSeasonSchedule(next, '2026-07-29', 4);
+  assert.strictEqual(schedule.filter(matchup => matchup.opponent_type === AVERAGE_OPPONENT).length, 0);
+}
+
 function testNoShowRemovalThreshold() {
   assert.strictEqual(NO_SHOW_REMOVAL_THRESHOLD, 7);
   const members = [
@@ -382,6 +414,7 @@ testLeagueExclusions();
 testScheduleGeneration();
 testResultsAndStandings();
 testPromotionRelegation();
+testOneTimeExpansionPromotion();
 testNoShowRemovalThreshold();
 testMessageSplit();
 testLeagueNamesAndTitles();

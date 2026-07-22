@@ -9,6 +9,7 @@ const AVERAGE_OPPONENT = 'AVERAGE';
 const WIN_REACTION = '🇼';
 const LOSS_REACTION = '🇱';
 const NO_SHOW_REMOVAL_THRESHOLD = 7;
+const ONE_TIME_EXPANSION_SEASON_NUMBER = 3;
 const EXCLUDED_LEAGUE_USER_IDS = new Set([
   '175759734996074497', // pancake_guys
   '215273003888541696', // Djimmy / djimmy23
@@ -94,18 +95,45 @@ function flattenStandings(standings) {
   return [1, 2, 3].flatMap(level => standings[level] || []);
 }
 
-function applyPromotionRelegation(memberships, standingsByLeague, newPlayers) {
-  const next = new Map(memberships.map(member => [member.user_id, { ...member }]));
+function rankedEligible(standingsByLeague, level, next) {
+  return rankStandings(standingsByLeague[level] || [])
+    .filter(row => next.has(row.user_id));
+}
 
+function applyNormalPromotionRelegation(next, standingsByLeague) {
   for (const level of [1, 2]) {
-    const upper = rankStandings(standingsByLeague[level] || []);
-    const lower = rankStandings(standingsByLeague[level + 1] || []);
+    const upper = rankedEligible(standingsByLeague, level, next);
+    const lower = rankedEligible(standingsByLeague, level + 1, next);
     const relegated = upper[upper.length - 1];
     const promoted = lower[0];
     if (!relegated || !promoted || relegated.user_id === promoted.user_id) continue;
-    if (next.has(relegated.user_id)) next.get(relegated.user_id).league_level = level + 1;
-    if (next.has(promoted.user_id)) next.get(promoted.user_id).league_level = level;
+    next.get(relegated.user_id).league_level = level + 1;
+    next.get(promoted.user_id).league_level = level;
   }
+}
+
+function applyOneTimeExpansionPromotion(next, standingsByLeague) {
+  const tism = rankedEligible(standingsByLeague, 1, next);
+  const mid = rankedEligible(standingsByLeague, 2, next);
+  const dunce = rankedEligible(standingsByLeague, 3, next);
+
+  const tismRelegated = tism[tism.length - 1];
+  if (tismRelegated) next.get(tismRelegated.user_id).league_level = 2;
+
+  for (const promoted of mid.slice(0, 2)) {
+    if (promoted.user_id !== tismRelegated?.user_id) next.get(promoted.user_id).league_level = 1;
+  }
+
+  for (const promoted of dunce.slice(0, 2)) {
+    next.get(promoted.user_id).league_level = 2;
+  }
+}
+
+function applyPromotionRelegation(memberships, standingsByLeague, newPlayers, options = {}) {
+  const next = new Map(memberships.map(member => [member.user_id, { ...member }]));
+
+  if (options.oneTimeExpansion) applyOneTimeExpansionPromotion(next, standingsByLeague);
+  else applyNormalPromotionRelegation(next, standingsByLeague);
 
   for (const player of newPlayers) {
     if (!next.has(player.user_id)) next.set(player.user_id, { ...player, league_level: 3 });
@@ -535,7 +563,9 @@ async function createNextSeason(pool, startDate, previousSeason) {
   const known = new Set(previousMembers.map(member => member.user_id));
   const newPlayers = players.filter(player => !known.has(player.user_id));
   const eligiblePreviousMembers = previousMembers.filter(member => !noShowRemovedIds.has(member.user_id));
-  const nextMemberships = applyPromotionRelegation(eligiblePreviousMembers, standings, newPlayers);
+  const nextMemberships = applyPromotionRelegation(eligiblePreviousMembers, standings, newPlayers, {
+    oneTimeExpansion: previousSeason.season_number === ONE_TIME_EXPANSION_SEASON_NUMBER
+  });
 
   const latestByUser = new Map(players.map(player => [player.user_id, player]));
   for (const member of nextMemberships) {
