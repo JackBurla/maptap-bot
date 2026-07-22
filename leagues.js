@@ -119,12 +119,14 @@ function applyOneTimeExpansionPromotion(next, standingsByLeague) {
 
   const tismRelegated = tism[tism.length - 1];
   if (tismRelegated) next.get(tismRelegated.user_id).league_level = 2;
+  const midRelegated = mid[mid.length - 1];
+  if (midRelegated) next.get(midRelegated.user_id).league_level = 3;
 
   for (const promoted of mid.slice(0, 2)) {
     if (promoted.user_id !== tismRelegated?.user_id) next.get(promoted.user_id).league_level = 1;
   }
 
-  for (const promoted of dunce.slice(0, 2)) {
+  for (const promoted of dunce.slice(0, 3)) {
     next.get(promoted.user_id).league_level = 2;
   }
 }

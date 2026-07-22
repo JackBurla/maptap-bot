@@ -172,7 +172,9 @@ function testOneTimeExpansionPromotion() {
   assert.strictEqual(next.find(member => member.user_id === 'm1').league_level, 1);
   assert.strictEqual(next.find(member => member.user_id === 'd0').league_level, 2);
   assert.strictEqual(next.find(member => member.user_id === 'd1').league_level, 2);
+  assert.strictEqual(next.find(member => member.user_id === 'd2').league_level, 2);
   assert.strictEqual(next.find(member => member.user_id === 't4').league_level, 2);
+  assert.strictEqual(next.find(member => member.user_id === 'm4').league_level, 3);
 
   const schedule = generateSeasonSchedule(next, '2026-07-29', 4);
   assert.strictEqual(schedule.filter(matchup => matchup.opponent_type === AVERAGE_OPPONENT).length, 0);
