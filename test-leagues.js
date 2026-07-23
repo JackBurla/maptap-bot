@@ -327,6 +327,7 @@ function testSeasonDayNumber() {
 }
 
 function testLeagueSections() {
+  // Daily post: results date (day 3) and schedule date (day 4) are independent.
   const { primary, secondary } = formatLeagueSections({
     dateStr: '2026-07-17',
     results: [{ league_level: 1, opponent_type: AVERAGE_OPPONENT, username: 'A', score: 900, opponent_score: 850, result: 'W' }],
@@ -336,20 +337,26 @@ function testLeagueSections() {
     titles: { 1: [{ username: 'A', titles: 2 }] },
     scheduleDate: '2026-07-18',
     schedule: [{ league_level: 1, opponent_type: AVERAGE_OPPONENT, username: 'A' }],
-    seasonDay: 5,
-    seasonNumber: 3
+    resultsSeasonNumber: 3,
+    resultsDay: 3,
+    scheduleSeasonNumber: 3,
+    scheduleDay: 4
   });
 
-  // Primary = header (+ day line) + Results + Tables.
-  assert(primary.includes('**MapTap Leagues - 2026-07-17**'));
-  assert(primary.includes('Season 3 · Day 5 of 10'));
+  // Primary = brand + "Results for Day X" (with results date) + Results + Tables.
+  assert(primary.includes('**MapTap Leagues**'));
+  assert(primary.includes('Season 3 — Results for Day 3 of 10 (2026-07-17)'));
   assert(primary.includes('**Results**'));
   assert(primary.includes('**Tables**'));
   assert(primary.includes('8,000 scored | A'));
   assert(!primary.includes('**Titles**'));
   assert(!primary.includes('**Schedule'));
+  assert(!primary.includes('Matchups'));
 
-  // Secondary = Titles + Schedule only.
+  // Secondary = brand + "Matchups for Day X+1" + Titles + Schedule.
+  assert(secondary.includes('**MapTap Leagues**'));
+  assert(secondary.includes('Season 3 — Matchups for Day 4 of 10'));
+  assert(!secondary.includes('(2026-07-18)')); // no date in the matchups header line
   assert(secondary.includes('**Titles**'));
   assert(secondary.includes('League Tism: A x2'));
   assert(secondary.includes('**Schedule - 2026-07-18**'));
@@ -357,29 +364,34 @@ function testLeagueSections() {
   assert(!secondary.includes('**Results**'));
   assert(!secondary.includes('**Tables**'));
 
-  // Day line is omitted when no season day is supplied (keeps other callers unchanged).
+  // Header descriptors are omitted when no day is supplied (brand still shows).
   const noDay = formatLeagueSections({
     dateStr: '2026-07-17', results: [], standings: {}, titles: {}, scheduleDate: '2026-07-18', schedule: []
   });
-  assert(!noDay.primary.includes('Day '));
+  assert(noDay.primary.includes('**MapTap Leagues**'));
+  assert(!noDay.primary.includes('Results for Day'));
+  assert(!noDay.secondary.includes('Matchups for Day'));
 
-  // Rollover day: "Final Standings" replaces the day counter, and the schedule
-  // announces the incoming season.
+  // Rollover day: message 1 keeps "Final Standings" for the finishing season;
+  // message 2 advances to the incoming season, Day 1.
   const wrap = formatLeagueSections({
-    dateStr: '2026-07-18', results: [], standings: {}, titles: {}, scheduleDate: '2026-07-19', schedule: [],
-    seasonDay: 10, seasonNumber: 3, finalStandings: true, nextSeasonNumber: 4
+    dateStr: '2026-07-28', results: [], standings: {}, titles: {}, scheduleDate: '2026-07-29', schedule: [],
+    resultsSeasonNumber: 3, resultsDay: 10, finalStandings: true,
+    scheduleSeasonNumber: 4, scheduleDay: 1
   });
-  assert(wrap.primary.includes('Season 3 · Final Standings'));
-  assert(!wrap.primary.includes('Day 10 of 10'));
-  assert(wrap.secondary.includes('**Schedule - 2026-07-19**\nSeason 4 starts today!'));
+  assert(wrap.primary.includes('Season 3 — Final Standings (2026-07-28)'));
+  assert(!wrap.primary.includes('Results for Day'));
+  assert(wrap.secondary.includes('Season 4 — Matchups for Day 1 of 10'));
 
-  // Non-rollover posts must not show either label.
-  const midSeason = formatLeagueSections({
-    dateStr: '2026-07-17', results: [], standings: {}, titles: {}, scheduleDate: '2026-07-18', schedule: [],
-    seasonDay: 5, seasonNumber: 3
+  // /leagues live view: results and schedule share the same day (no false +1).
+  const live = formatLeagueSections({
+    dateStr: '2026-07-17', results: [], standings: {}, titles: {}, scheduleDate: '2026-07-17', schedule: [],
+    resultsSeasonNumber: 3, resultsDay: 3, finalStandings: false,
+    scheduleSeasonNumber: 3, scheduleDay: 3
   });
-  assert(!midSeason.primary.includes('Final Standings'));
-  assert(!midSeason.secondary.includes('starts today'));
+  assert(live.primary.includes('Season 3 — Results for Day 3 of 10 (2026-07-17)'));
+  assert(live.secondary.includes('Season 3 — Matchups for Day 3 of 10'));
+  assert(!live.primary.includes('Final Standings'));
 }
 
 // Season rollover must finalize the previous season's last day (no-shows, forfeits,

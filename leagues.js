@@ -1170,17 +1170,24 @@ function formatSeasonAwardsPanel(awards) {
   return lines.join('\n');
 }
 
-// Builds the daily league post as two logical Discord messages:
-//   primary   = header (+ optional "Season N · Day D of 10" line) + Results + Tables
-//   secondary = Titles + Schedule
-function formatLeagueSections({ dateStr, results, standings, titles, scheduleDate, schedule, seasonDay, seasonNumber, finalStandings, nextSeasonNumber }) {
-  const primary = [`**MapTap Leagues - ${dateStr}**`];
+// Builds the league post as two logical Discord messages:
+//   primary   = brand + "Results for Day X" header + Results + Tables
+//   secondary = brand + "Matchups for Day Y" header + Titles + Schedule
+// The two messages carry independent day headers: message 1 is the *results* of
+// `resultsDay` (the day whose scores just settled), message 2 is the *matchups* of
+// `scheduleDay` (the day being played). For the daily post those differ by one — and
+// cross a season boundary on rollover; for /leagues they are the same day. Each header
+// is derived from its own date's season, so no "+1" is ever assumed.
+function formatLeagueSections({
+  dateStr, results, standings, titles, scheduleDate, schedule,
+  resultsSeasonNumber, resultsDay, finalStandings,
+  scheduleSeasonNumber, scheduleDay
+}) {
+  const primary = ['**MapTap Leagues**'];
   if (finalStandings) {
-    primary.push(seasonNumber ? `Season ${seasonNumber} · Final Standings` : 'Final Standings');
-  } else if (seasonDay) {
-    primary.push(seasonNumber
-      ? `Season ${seasonNumber} · Day ${seasonDay} of ${SEASON_LENGTH_DAYS}`
-      : `Day ${seasonDay} of ${SEASON_LENGTH_DAYS}`);
+    primary.push(`Season ${resultsSeasonNumber} — Final Standings (${dateStr})`);
+  } else if (resultsDay) {
+    primary.push(`Season ${resultsSeasonNumber} — Results for Day ${resultsDay} of ${SEASON_LENGTH_DAYS} (${dateStr})`);
   }
 
   primary.push('**Results**');
@@ -1215,13 +1222,16 @@ function formatLeagueSections({ dateStr, results, standings, titles, scheduleDat
     }
   }
 
-  const secondary = ['**Titles**'];
+  const secondary = ['**MapTap Leagues**'];
+  if (scheduleDay) {
+    secondary.push(`Season ${scheduleSeasonNumber} — Matchups for Day ${scheduleDay} of ${SEASON_LENGTH_DAYS}`);
+  }
+  secondary.push('**Titles**');
   const titleLines = formatTitleTracker(titles || {});
   if (titleLines.length) secondary.push(...titleLines);
   else secondary.push('_No league titles awarded yet._');
 
   secondary.push('', `**Schedule - ${scheduleDate}**`);
-  if (nextSeasonNumber) secondary.push(`Season ${nextSeasonNumber} starts today!`);
   for (const level of [1, 2, 3]) {
     const leagueSchedule = schedule.filter(row => row.league_level === level);
     if (!leagueSchedule.length) continue;
@@ -1284,10 +1294,13 @@ async function buildDailyLeagueMessages(pool, resultDate, scheduleDate) {
     titles,
     scheduleDate,
     schedule: scheduleInfo.schedule || [],
-    seasonDay: seasonDayNumber(standingsSeason, scheduleDate),
-    seasonNumber: standingsSeason.season_number,
+    // Message 1 labels the results date; message 2 labels the schedule date, each
+    // against its own season (they diverge on rollover: old season vs new season).
+    resultsSeasonNumber: standingsSeason.season_number,
+    resultsDay: seasonDayNumber(standingsSeason, resultDate),
     finalStandings: isSeasonWrap,
-    nextSeasonNumber: isSeasonWrap ? scheduleInfo.season?.season_number : null
+    scheduleSeasonNumber: scheduleInfo.season?.season_number,
+    scheduleDay: seasonDayNumber(scheduleInfo.season, scheduleDate)
   });
   const messages = [primary, secondary].flatMap(section => splitDiscordMessage(section));
   if (awardsText) messages.push(awardsText);
@@ -1306,6 +1319,8 @@ async function buildCurrentLeagueMessages(pool, dateStr) {
   const standings = await buildStandings(pool, season.id, { includeAverage: true });
   const titles = await getLeagueTitleTracker(pool);
   const results = await getLeagueResultsForDate(pool, season.id, dateStr);
+  // Live snapshot: results and schedule are the same day, so both headers share it.
+  const day = seasonDayNumber(season, viewDate);
   const { primary, secondary } = formatLeagueSections({
     dateStr: viewDate,
     results,
@@ -1313,8 +1328,11 @@ async function buildCurrentLeagueMessages(pool, dateStr) {
     titles,
     scheduleDate: viewDate,
     schedule: scheduleInfo.schedule || [],
-    seasonDay: seasonDayNumber(season, viewDate),
-    seasonNumber: season.season_number
+    resultsSeasonNumber: season.season_number,
+    resultsDay: day,
+    finalStandings: false,
+    scheduleSeasonNumber: season.season_number,
+    scheduleDay: day
   });
   return { messages: [primary, secondary].flatMap(section => splitDiscordMessage(section)) };
 }
