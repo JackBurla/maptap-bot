@@ -1224,7 +1224,7 @@ function formatLeagueSections({
 
   const secondary = ['**MapTap Leagues**'];
   if (scheduleDay) {
-    secondary.push(`Season ${scheduleSeasonNumber} — Matchups for Day ${scheduleDay} of ${SEASON_LENGTH_DAYS}`);
+    secondary.push(`Season ${scheduleSeasonNumber} — Matchups for Day ${scheduleDay} of ${SEASON_LENGTH_DAYS} (${scheduleDate})`);
   }
   secondary.push('**Titles**');
   const titleLines = formatTitleTracker(titles || {});

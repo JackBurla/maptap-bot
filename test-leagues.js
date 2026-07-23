@@ -353,10 +353,9 @@ function testLeagueSections() {
   assert(!primary.includes('**Schedule'));
   assert(!primary.includes('Matchups'));
 
-  // Secondary = brand + "Matchups for Day X+1" + Titles + Schedule.
+  // Secondary = brand + "Matchups for Day X+1 (schedule date)" + Titles + Schedule.
   assert(secondary.includes('**MapTap Leagues**'));
-  assert(secondary.includes('Season 3 — Matchups for Day 4 of 10'));
-  assert(!secondary.includes('(2026-07-18)')); // no date in the matchups header line
+  assert(secondary.includes('Season 3 — Matchups for Day 4 of 10 (2026-07-18)'));
   assert(secondary.includes('**Titles**'));
   assert(secondary.includes('League Tism: A x2'));
   assert(secondary.includes('**Schedule - 2026-07-18**'));
@@ -381,7 +380,7 @@ function testLeagueSections() {
   });
   assert(wrap.primary.includes('Season 3 — Final Standings (2026-07-28)'));
   assert(!wrap.primary.includes('Results for Day'));
-  assert(wrap.secondary.includes('Season 4 — Matchups for Day 1 of 10'));
+  assert(wrap.secondary.includes('Season 4 — Matchups for Day 1 of 10 (2026-07-29)'));
 
   // /leagues live view: results and schedule share the same day (no false +1).
   const live = formatLeagueSections({
@@ -390,7 +389,7 @@ function testLeagueSections() {
     scheduleSeasonNumber: 3, scheduleDay: 3
   });
   assert(live.primary.includes('Season 3 — Results for Day 3 of 10 (2026-07-17)'));
-  assert(live.secondary.includes('Season 3 — Matchups for Day 3 of 10'));
+  assert(live.secondary.includes('Season 3 — Matchups for Day 3 of 10 (2026-07-17)'));
   assert(!live.primary.includes('Final Standings'));
 }
 
