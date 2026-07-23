@@ -7,6 +7,7 @@ const {
   NO_SHOW_REMOVAL_THRESHOLD,
   applyPromotionRelegation,
   assignRoundIndices,
+  buildCurrentLeagueMessages,
   buildPlayerAverages,
   createNextSeason,
   buildSeasonAwards,
@@ -382,15 +383,16 @@ function testLeagueSections() {
   assert(!wrap.primary.includes('Results for Day'));
   assert(wrap.secondary.includes('Season 4 — Matchups for Day 1 of 10 (2026-07-29)'));
 
-  // /leagues live view: results and schedule share the same day (no false +1).
-  const live = formatLeagueSections({
+  // Formatter never forces a +1: when a caller supplies equal results/schedule days
+  // it renders them equal (the day offset is the caller's responsibility).
+  const equal = formatLeagueSections({
     dateStr: '2026-07-17', results: [], standings: {}, titles: {}, scheduleDate: '2026-07-17', schedule: [],
     resultsSeasonNumber: 3, resultsDay: 3, finalStandings: false,
     scheduleSeasonNumber: 3, scheduleDay: 3
   });
-  assert(live.primary.includes('Season 3 — Results for Day 3 of 10 (2026-07-17)'));
-  assert(live.secondary.includes('Season 3 — Matchups for Day 3 of 10 (2026-07-17)'));
-  assert(!live.primary.includes('Final Standings'));
+  assert(equal.primary.includes('Season 3 — Results for Day 3 of 10 (2026-07-17)'));
+  assert(equal.secondary.includes('Season 3 — Matchups for Day 3 of 10 (2026-07-17)'));
+  assert(!equal.primary.includes('Final Standings'));
 }
 
 // Season rollover must finalize the previous season's last day (no-shows, forfeits,
@@ -422,6 +424,37 @@ async function testRolloverFinalizesBeforeStandings() {
   assert(finalizeIdx < standingsIdx, 'final day must be finalized before standings are computed');
 }
 
+// /leagues must show results for the PREVIOUS day and schedule for the current day
+// (not the same day for both), and must never query a future date — querying
+// tomorrow's schedule would trip ensureLeagueSeasonForDate into a premature rollover
+// when run on a season's final day.
+async function testCurrentLeagueUsesPreviousDayResults() {
+  const viewDate = '2026-07-22';
+  const resultDate = '2026-07-21';
+  const tomorrow = '2026-07-23';
+  const season = { id: 1, season_number: 3, start_date: '2026-07-19', end_date: '2026-07-28' };
+  const seenDates = [];
+  let resultsDate = null;
+  let scheduleDate = null;
+  const stubPool = {
+    async query(sql, params = []) {
+      for (const p of params) if (typeof p === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p)) seenDates.push(p);
+      if (sql.includes('FROM league_seasons') && sql.includes('start_date <= $1')) return { rows: [season] };
+      if (sql.includes('FROM league_results r')) { resultsDate = params[1]; return { rows: [] }; }
+      if (sql.includes('FROM league_matchups lm')) { scheduleDate = params[1]; return { rows: [] }; }
+      return { rows: [] };
+    }
+  };
+
+  const { messages } = await buildCurrentLeagueMessages(stubPool, viewDate);
+  assert(messages.length >= 2, '/leagues should render two messages');
+  assert.strictEqual(resultsDate, resultDate, 'results must be fetched for the previous day');
+  assert.strictEqual(scheduleDate, viewDate, 'schedule must be fetched for the current day');
+  assert(!seenDates.includes(tomorrow), '/leagues must never query a future date (rollover guard)');
+  assert(messages[0].includes('Results for Day 3 of 10 (2026-07-21)'), 'message 1 labels the previous day');
+  assert(messages[1].includes('Matchups for Day 4 of 10 (2026-07-22)'), 'message 2 labels the current day');
+}
+
 testInitialSeeding();
 testLeagueExclusions();
 testScheduleGeneration();
@@ -437,7 +470,10 @@ testLiveAverageResolverExport();
 testAssignRoundIndices();
 testSeasonDayNumber();
 testLeagueSections();
-testRolloverFinalizesBeforeStandings()
+Promise.all([
+  testRolloverFinalizesBeforeStandings(),
+  testCurrentLeagueUsesPreviousDayResults()
+])
   .then(() => console.log('league tests passed'))
   .catch(err => {
     console.error(err);

@@ -1320,21 +1320,23 @@ async function buildCurrentLeagueMessages(pool, dateStr) {
   if (!season) return { messages: [] };
   const standings = await buildStandings(pool, season.id, { includeAverage: true });
   const titles = await getLeagueTitleTracker(pool);
-  const results = await getLeagueResultsForDate(pool, season.id, dateStr);
-  // Live snapshot: results and schedule are the same day, so both headers share it.
-  const day = seasonDayNumber(season, viewDate);
+  // Mirror the daily post: results for the last completed day, schedule for today.
+  // Schedule stays at viewDate (never viewDate+1) so viewing /leagues on a season's
+  // final day can't trip ensureLeagueSeasonForDate into a premature rollover.
+  const resultDate = dateAdd(viewDate, -1);
+  const results = await getLeagueResultsForDate(pool, season.id, resultDate);
   const { primary, secondary } = formatLeagueSections({
-    dateStr: viewDate,
+    dateStr: resultDate,
     results,
     standings,
     titles,
     scheduleDate: viewDate,
     schedule: scheduleInfo.schedule || [],
     resultsSeasonNumber: season.season_number,
-    resultsDay: day,
+    resultsDay: seasonDayNumber(season, resultDate),
     finalStandings: false,
     scheduleSeasonNumber: season.season_number,
-    scheduleDay: day
+    scheduleDay: seasonDayNumber(season, viewDate)
   });
   return { messages: [primary, secondary].flatMap(section => splitDiscordMessage(section)) };
 }
