@@ -424,15 +424,25 @@ async function testRolloverFinalizesBeforeStandings() {
   assert(finalizeIdx < standingsIdx, 'final day must be finalized before standings are computed');
 }
 
-// /leagues must show results for the PREVIOUS day and schedule for the current day
-// (not the same day for both), and must never query a future date — querying
-// tomorrow's schedule would trip ensureLeagueSeasonForDate into a premature rollover
-// when run on a season's final day.
-async function testCurrentLeagueUsesPreviousDayResults() {
+// /leagues is a live snapshot of the CURRENT day: decided matchups under Results,
+// still-to-play matchups (only) under "Still to play". Both use today's date, and it
+// must never query a future date — querying tomorrow's schedule would trip
+// ensureLeagueSeasonForDate into a premature rollover on a season's final day.
+async function testCurrentLeagueLiveSnapshot() {
   const viewDate = '2026-07-22';
-  const resultDate = '2026-07-21';
   const tomorrow = '2026-07-23';
   const season = { id: 1, season_number: 3, start_date: '2026-07-19', end_date: '2026-07-28' };
+  // Pair A/B is decided today; pair C/D is not.
+  const scheduleRows = [
+    { league_level: 1, user_id: 'A', opponent_user_id: 'B', opponent_type: 'USER', username: 'A', opponent_username: 'B' },
+    { league_level: 1, user_id: 'B', opponent_user_id: 'A', opponent_type: 'USER', username: 'B', opponent_username: 'A' },
+    { league_level: 1, user_id: 'C', opponent_user_id: 'D', opponent_type: 'USER', username: 'C', opponent_username: 'D' },
+    { league_level: 1, user_id: 'D', opponent_user_id: 'C', opponent_type: 'USER', username: 'D', opponent_username: 'C' }
+  ];
+  const resultRows = [
+    { league_level: 1, user_id: 'A', opponent_user_id: 'B', opponent_type: 'USER', result: 'W', score: 900, opponent_score: 800, username: 'A', opponent_username: 'B' },
+    { league_level: 1, user_id: 'B', opponent_user_id: 'A', opponent_type: 'USER', result: 'L', score: 800, opponent_score: 900, username: 'B', opponent_username: 'A' }
+  ];
   const seenDates = [];
   let resultsDate = null;
   let scheduleDate = null;
@@ -440,19 +450,22 @@ async function testCurrentLeagueUsesPreviousDayResults() {
     async query(sql, params = []) {
       for (const p of params) if (typeof p === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p)) seenDates.push(p);
       if (sql.includes('FROM league_seasons') && sql.includes('start_date <= $1')) return { rows: [season] };
-      if (sql.includes('FROM league_results r')) { resultsDate = params[1]; return { rows: [] }; }
-      if (sql.includes('FROM league_matchups lm')) { scheduleDate = params[1]; return { rows: [] }; }
+      if (sql.includes('FROM league_results r')) { resultsDate = params[1]; return { rows: resultRows }; }
+      if (sql.includes('FROM league_matchups lm')) { scheduleDate = params[1]; return { rows: scheduleRows }; }
       return { rows: [] };
     }
   };
 
   const { messages } = await buildCurrentLeagueMessages(stubPool, viewDate);
-  assert(messages.length >= 2, '/leagues should render two messages');
-  assert.strictEqual(resultsDate, resultDate, 'results must be fetched for the previous day');
+  const joined = messages.join('\n');
+  assert.strictEqual(resultsDate, viewDate, 'results must be fetched for the current day');
   assert.strictEqual(scheduleDate, viewDate, 'schedule must be fetched for the current day');
   assert(!seenDates.includes(tomorrow), '/leagues must never query a future date (rollover guard)');
-  assert(messages[0].includes('Results for Day 3 of 10 (2026-07-21)'), 'message 1 labels the previous day');
-  assert(messages[1].includes('Matchups for Day 4 of 10 (2026-07-22)'), 'message 2 labels the current day');
+  assert(messages[0].includes(`Day 4 of 10 (${viewDate}) — live`), 'message 1 is a live snapshot of the current day');
+  assert(messages[0].includes('A 900 - 800 B'), 'decided matchup appears under Results');
+  assert(joined.includes('**Still to play**'), 'second message has a Still to play section');
+  assert(joined.includes('C vs D'), 'undecided matchup appears under Still to play');
+  assert(!joined.includes('A vs B'), 'decided matchup must NOT reappear under Still to play');
 }
 
 testInitialSeeding();
@@ -472,7 +485,7 @@ testSeasonDayNumber();
 testLeagueSections();
 Promise.all([
   testRolloverFinalizesBeforeStandings(),
-  testCurrentLeagueUsesPreviousDayResults()
+  testCurrentLeagueLiveSnapshot()
 ])
   .then(() => console.log('league tests passed'))
   .catch(err => {

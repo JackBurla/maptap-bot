@@ -1183,10 +1183,16 @@ function formatSeasonAwardsPanel(awards) {
 function formatLeagueSections({
   dateStr, results, standings, titles, scheduleDate, schedule,
   resultsSeasonNumber, resultsDay, finalStandings,
-  scheduleSeasonNumber, scheduleDay
+  scheduleSeasonNumber, scheduleDay, live = false
 }) {
+  // `live` is the on-demand /leagues snapshot: results and schedule are the same
+  // (current) day, the schedule holds only the matchups still to play, and the
+  // headers say so. The daily post (live = false) keeps the Results-for-day-X /
+  // Matchups-for-day-X+1 framing.
   const primary = ['**MapTap Leagues**'];
-  if (finalStandings) {
+  if (live) {
+    if (resultsDay) primary.push(`Season ${resultsSeasonNumber} · Day ${resultsDay} of ${SEASON_LENGTH_DAYS} (${dateStr}) — live`);
+  } else if (finalStandings) {
     primary.push(`Season ${resultsSeasonNumber} — Final Standings (${dateStr})`);
   } else if (resultsDay) {
     primary.push(`Season ${resultsSeasonNumber} — Results for Day ${resultsDay} of ${SEASON_LENGTH_DAYS} (${dateStr})`);
@@ -1212,7 +1218,9 @@ function formatLeagueSections({
       }
     }
   }
-  if (primary.length - 1 === resultsHeaderIndex) primary.push('_No league results finalized._');
+  if (primary.length - 1 === resultsHeaderIndex) {
+    primary.push(live ? '_No matchups decided yet today._' : '_No league results finalized._');
+  }
 
   primary.push('', '**Tables**');
   for (const level of [1, 2, 3]) {
@@ -1225,7 +1233,9 @@ function formatLeagueSections({
   }
 
   const secondary = ['**MapTap Leagues**'];
-  if (scheduleDay) {
+  if (live) {
+    if (scheduleDay) secondary.push(`Season ${scheduleSeasonNumber} · Day ${scheduleDay} of ${SEASON_LENGTH_DAYS} (${scheduleDate})`);
+  } else if (scheduleDay) {
     secondary.push(`Season ${scheduleSeasonNumber} — Matchups for Day ${scheduleDay} of ${SEASON_LENGTH_DAYS} (${scheduleDate})`);
   }
   secondary.push('**Titles**');
@@ -1233,7 +1243,8 @@ function formatLeagueSections({
   if (titleLines.length) secondary.push(...titleLines);
   else secondary.push('_No league titles awarded yet._');
 
-  secondary.push('', `**Schedule - ${scheduleDate}**`);
+  secondary.push('', live ? '**Still to play**' : `**Schedule - ${scheduleDate}**`);
+  const scheduleHeaderIndex = secondary.length - 1;
   for (const level of [1, 2, 3]) {
     const leagueSchedule = schedule.filter(row => row.league_level === level);
     if (!leagueSchedule.length) continue;
@@ -1249,6 +1260,9 @@ function formatLeagueSections({
       seenPairs.add(key);
       secondary.push(`${row.username} vs ${row.opponent_username}`);
     }
+  }
+  if (live && secondary.length - 1 === scheduleHeaderIndex) {
+    secondary.push('_All matchups decided._');
   }
 
   return { primary: primary.join('\n'), secondary: secondary.join('\n') };
@@ -1320,23 +1334,27 @@ async function buildCurrentLeagueMessages(pool, dateStr) {
   if (!season) return { messages: [] };
   const standings = await buildStandings(pool, season.id, { includeAverage: true });
   const titles = await getLeagueTitleTracker(pool);
-  // Mirror the daily post: results for the last completed day, schedule for today.
-  // Schedule stays at viewDate (never viewDate+1) so viewing /leagues on a season's
-  // final day can't trip ensureLeagueSeasonForDate into a premature rollover.
-  const resultDate = dateAdd(viewDate, -1);
-  const results = await getLeagueResultsForDate(pool, season.id, resultDate);
+  // Live snapshot of the current day: today's decided matchups under Results, today's
+  // still-to-play matchups under "Still to play". The schedule stays at viewDate (never
+  // viewDate+1) so viewing /leagues on a season's final day can't trip
+  // ensureLeagueSeasonForDate into a premature rollover.
+  const results = await getLeagueResultsForDate(pool, season.id, viewDate);
+  const decided = new Set(results.map(row => row.user_id));
+  const remaining = (scheduleInfo.schedule || []).filter(row => !decided.has(row.user_id));
+  const day = seasonDayNumber(season, viewDate);
   const { primary, secondary } = formatLeagueSections({
-    dateStr: resultDate,
+    dateStr: viewDate,
     results,
     standings,
     titles,
     scheduleDate: viewDate,
-    schedule: scheduleInfo.schedule || [],
+    schedule: remaining,
     resultsSeasonNumber: season.season_number,
-    resultsDay: seasonDayNumber(season, resultDate),
+    resultsDay: day,
     finalStandings: false,
     scheduleSeasonNumber: season.season_number,
-    scheduleDay: seasonDayNumber(season, viewDate)
+    scheduleDay: day,
+    live: true
   });
   return { messages: [primary, secondary].flatMap(section => splitDiscordMessage(section)) };
 }
