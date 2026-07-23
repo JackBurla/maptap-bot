@@ -650,7 +650,6 @@ cron.schedule('1 0 * * *', async () => {
     if (!channel?.isTextBased()) return;
 
     await refreshLeagueUsernamesForDate(resultDate);
-    await buildDailyLeagueMessages(pool, resultDate, scheduleDate);
     await refreshLeagueUsernamesForDate(scheduleDate);
     const { messages, reactionTargets, awardMentionUserIds = [] } = await buildDailyLeagueMessages(pool, resultDate, scheduleDate);
     for (let i = 0; i < messages.length; i++) {
