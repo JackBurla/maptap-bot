@@ -1041,8 +1041,10 @@ function formatScore(value) {
   if (value === null || value === undefined) return 'DNS';
   const n = Number(value);
   // Thousands separators for both integers and fractional values (e.g. the
-  // League Average total, which is a mean): 3,912 and 3,716.4 alike.
-  return n.toLocaleString(undefined, { maximumFractionDigits: 1 });
+  // League Average total, which is a mean): 3,912 and 3,716.4 alike. Pin the
+  // locale so grouping/decimal separators are deterministic regardless of the
+  // host's default locale (matches the en-CA/en-US pinning used for dates).
+  return n.toLocaleString('en-US', { maximumFractionDigits: 1 });
 }
 
 function formatAwardWinner(row) {
