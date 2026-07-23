@@ -466,6 +466,7 @@ async function testCurrentLeagueLiveSnapshot() {
   assert(joined.includes('**Still to play**'), 'second message has a Still to play section');
   assert(joined.includes('C vs D'), 'undecided matchup appears under Still to play');
   assert(!joined.includes('A vs B'), 'decided matchup must NOT reappear under Still to play');
+  assert(!joined.includes('**Titles**'), '/leagues omits the Titles tracker (daily post only)');
 }
 
 testInitialSeeding();

@@ -1238,12 +1238,17 @@ function formatLeagueSections({
   } else if (scheduleDay) {
     secondary.push(`Season ${scheduleSeasonNumber} — Matchups for Day ${scheduleDay} of ${SEASON_LENGTH_DAYS} (${scheduleDate})`);
   }
-  secondary.push('**Titles**');
-  const titleLines = formatTitleTracker(titles || {});
-  if (titleLines.length) secondary.push(...titleLines);
-  else secondary.push('_No league titles awarded yet._');
-
-  secondary.push('', live ? '**Still to play**' : `**Schedule - ${scheduleDate}**`);
+  // The Titles tracker is historical context that belongs on the daily recap, not on
+  // the live /leagues snapshot; skip it there.
+  if (!live) {
+    secondary.push('**Titles**');
+    const titleLines = formatTitleTracker(titles || {});
+    if (titleLines.length) secondary.push(...titleLines);
+    else secondary.push('_No league titles awarded yet._');
+    secondary.push('', `**Schedule - ${scheduleDate}**`);
+  } else {
+    secondary.push('**Still to play**');
+  }
   const scheduleHeaderIndex = secondary.length - 1;
   for (const level of [1, 2, 3]) {
     const leagueSchedule = schedule.filter(row => row.league_level === level);
@@ -1333,11 +1338,11 @@ async function buildCurrentLeagueMessages(pool, dateStr) {
   const season = scheduleInfo.season;
   if (!season) return { messages: [] };
   const standings = await buildStandings(pool, season.id, { includeAverage: true });
-  const titles = await getLeagueTitleTracker(pool);
   // Live snapshot of the current day: today's decided matchups under Results, today's
-  // still-to-play matchups under "Still to play". The schedule stays at viewDate (never
-  // viewDate+1) so viewing /leagues on a season's final day can't trip
-  // ensureLeagueSeasonForDate into a premature rollover.
+  // still-to-play matchups under "Still to play". No Titles tracker here (daily-post
+  // only), so it isn't fetched. The schedule stays at viewDate (never viewDate+1) so
+  // viewing /leagues on a season's final day can't trip ensureLeagueSeasonForDate into
+  // a premature rollover.
   const results = await getLeagueResultsForDate(pool, season.id, viewDate);
   const decided = new Set(results.map(row => row.user_id));
   const remaining = (scheduleInfo.schedule || []).filter(row => !decided.has(row.user_id));
@@ -1346,7 +1351,7 @@ async function buildCurrentLeagueMessages(pool, dateStr) {
     dateStr: viewDate,
     results,
     standings,
-    titles,
+    titles: {},
     scheduleDate: viewDate,
     schedule: remaining,
     resultsSeasonNumber: season.season_number,
