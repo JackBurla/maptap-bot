@@ -1040,7 +1040,9 @@ function formatPointDiff(value) {
 function formatScore(value) {
   if (value === null || value === undefined) return 'DNS';
   const n = Number(value);
-  return Number.isInteger(n) ? n.toLocaleString() : n.toFixed(1);
+  // Thousands separators for both integers and fractional values (e.g. the
+  // League Average total, which is a mean): 3,912 and 3,716.4 alike.
+  return n.toLocaleString(undefined, { maximumFractionDigits: 1 });
 }
 
 function formatAwardWinner(row) {
