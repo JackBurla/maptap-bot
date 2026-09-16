@@ -12,7 +12,6 @@ const {
   createNextSeason,
   buildSeasonAwards,
   dateAdd,
-  formatLeagueReminder,
   formatLeagueSections,
   formatLeagueUpdate,
   formatSeasonAwardsPanel,
@@ -44,9 +43,8 @@ function testInitialSeeding() {
   rows.push(...scoreRows('newbie', 'Newbie', [900], '2026-05-29'));
   const players = buildPlayerAverages(rows, '2026-06-01');
   const seeded = seedInitialMemberships(players);
-  assert.strictEqual(seeded.filter(p => p.league_level === 1).length, 5);
-  assert.strictEqual(seeded.filter(p => p.league_level === 2).length, 5);
-  assert.strictEqual(seeded.find(p => p.user_id === 'newbie').league_level, 3);
+  assert.strictEqual(seeded.length, 13);
+  assert(seeded.every(p => p.league_level === 1));
 }
 
 function testLeagueExclusions() {
@@ -64,16 +62,14 @@ function testScheduleGeneration() {
     { user_id: 'a', league_level: 1 },
     { user_id: 'b', league_level: 1 },
     { user_id: 'c', league_level: 1 },
-    { user_id: 'd', league_level: 2 },
-    { user_id: 'e', league_level: 2 }
+    { user_id: 'd', league_level: 1 },
+    { user_id: 'e', league_level: 1 }
   ];
   const schedule = generateSeasonSchedule(members, '2026-06-01', 1);
   assert.strictEqual(schedule.filter(m => m.league_level === 1 && m.opponent_type === AVERAGE_OPPONENT).length, 10);
-  assert.strictEqual(schedule.filter(m => m.league_level === 2 && m.opponent_type === AVERAGE_OPPONENT).length, 0);
   for (let day = 0; day < 10; day++) {
     const date = dateAdd('2026-06-01', day);
-    assert.strictEqual(schedule.filter(m => m.date_str === date && m.league_level === 1).length, 3);
-    assert.strictEqual(schedule.filter(m => m.date_str === date && m.league_level === 2).length, 2);
+    assert.strictEqual(schedule.filter(m => m.date_str === date && m.league_level === 1).length, 5);
   }
 
   const topLeague = ['a', 'b', 'c', 'd', 'e'].map(user_id => ({ user_id, league_level: 1 }));
@@ -85,16 +81,16 @@ function testScheduleGeneration() {
     assert.strictEqual(topSchedule.filter(m => m.user_id === member.user_id && m.opponent_type === AVERAGE_OPPONENT).length, 2);
   }
 
-  const soloSchedule = generateSeasonSchedule([{ user_id: 'solo', league_level: 3 }], '2026-06-01', 1);
+  const soloSchedule = generateSeasonSchedule([{ user_id: 'solo', league_level: 1 }], '2026-06-01', 1);
   assert.strictEqual(soloSchedule.filter(m => m.opponent_type === AVERAGE_OPPONENT).length, 10);
 
-  const dunceLeague = Array.from({ length: 10 }, (_, idx) => ({ user_id: `d${idx}`, league_level: 3 }));
-  const dunceSchedule = generateSeasonSchedule(dunceLeague, '2026-06-01', 1);
-  const duncePairs = pairCounts(dunceSchedule);
-  assert.strictEqual(duncePairs.size, 45);
+  const largeLeague = Array.from({ length: 10 }, (_, idx) => ({ user_id: `d${idx}`, league_level: 1 }));
+  const largeSchedule = generateSeasonSchedule(largeLeague, '2026-06-01', 1);
+  const largePairs = pairCounts(largeSchedule);
+  assert.strictEqual(largePairs.size, 45);
   // 10 days x 5 pairs per round = 50 total meetings (full round-robin + one rematch round).
-  assert.strictEqual([...duncePairs.values()].reduce((sum, count) => sum + count, 0), 50);
-  assert.strictEqual(dunceSchedule.filter(m => m.opponent_type === AVERAGE_OPPONENT).length, 0);
+  assert.strictEqual([...largePairs.values()].reduce((sum, count) => sum + count, 0), 50);
+  assert.strictEqual(largeSchedule.filter(m => m.opponent_type === AVERAGE_OPPONENT).length, 0);
 }
 
 function pairCounts(schedule) {
@@ -129,56 +125,10 @@ function testPromotionRelegation() {
     { user_id: 'c2', username: 'C2', league_level: 2 },
     { user_id: 'l1', username: 'L1', league_level: 3 }
   ];
-  const next = applyPromotionRelegation(members, {
-    1: [
-      { user_id: 'p1', username: 'P1', points: 6, point_diff: 5, total_score: 10, seed_average: 1 },
-      { user_id: 'p2', username: 'P2', points: 0, point_diff: -5, total_score: 10, seed_average: 1 }
-    ],
-    2: [
-      { user_id: 'c1', username: 'C1', points: 9, point_diff: 5, total_score: 10, seed_average: 1 },
-      { user_id: 'c2', username: 'C2', points: 0, point_diff: -5, total_score: 10, seed_average: 1 }
-    ],
-    3: [
-      { user_id: 'l1', username: 'L1', points: 9, point_diff: 5, total_score: 10, seed_average: 1 }
-    ]
-  }, [{ user_id: 'new', username: 'New', seed_average: 700 }]);
-  assert.strictEqual(next.find(p => p.user_id === 'c1').league_level, 1);
-  assert.strictEqual(next.find(p => p.user_id === 'p2').league_level, 2);
-  assert.strictEqual(next.find(p => p.user_id === 'new').league_level, 3);
-}
-
-function testOneTimeExpansionPromotion() {
-  const members = [
-    ...Array.from({ length: 5 }, (_, idx) => ({ user_id: `t${idx}`, username: `T${idx}`, league_level: 1 })),
-    ...Array.from({ length: 5 }, (_, idx) => ({ user_id: `m${idx}`, username: `M${idx}`, league_level: 2 })),
-    ...Array.from({ length: 10 }, (_, idx) => ({ user_id: `d${idx}`, username: `D${idx}`, league_level: 3 }))
-  ];
-  const standings = {
-    1: members
-      .filter(member => member.league_level === 1)
-      .map((member, idx) => ({ ...member, points: 10 - idx, total_score: 1000 - idx, point_diff: 50 - idx, seed_average: 1 })),
-    2: members
-      .filter(member => member.league_level === 2)
-      .map((member, idx) => ({ ...member, points: 10 - idx, total_score: 1000 - idx, point_diff: 50 - idx, seed_average: 1 })),
-    3: members
-      .filter(member => member.league_level === 3)
-      .map((member, idx) => ({ ...member, points: 20 - idx, total_score: 2000 - idx, point_diff: 100 - idx, seed_average: 1 }))
-  };
-
-  const next = applyPromotionRelegation(members, standings, [], { oneTimeExpansion: true });
-  assert.strictEqual(next.filter(member => member.league_level === 1).length, 6);
-  assert.strictEqual(next.filter(member => member.league_level === 2).length, 6);
-  assert.strictEqual(next.filter(member => member.league_level === 3).length, 8);
-  assert.strictEqual(next.find(member => member.user_id === 'm0').league_level, 1);
-  assert.strictEqual(next.find(member => member.user_id === 'm1').league_level, 1);
-  assert.strictEqual(next.find(member => member.user_id === 'd0').league_level, 2);
-  assert.strictEqual(next.find(member => member.user_id === 'd1').league_level, 2);
-  assert.strictEqual(next.find(member => member.user_id === 'd2').league_level, 2);
-  assert.strictEqual(next.find(member => member.user_id === 't4').league_level, 2);
-  assert.strictEqual(next.find(member => member.user_id === 'm4').league_level, 3);
-
-  const schedule = generateSeasonSchedule(next, '2026-07-29', 4);
-  assert.strictEqual(schedule.filter(matchup => matchup.opponent_type === AVERAGE_OPPONENT).length, 0);
+  const next = applyPromotionRelegation(members, {}, [{ user_id: 'new', username: 'New', seed_average: 700 }]);
+  assert.strictEqual(next.length, 6);
+  assert(next.every(p => p.league_level === 1));
+  assert.strictEqual(next.find(p => p.user_id === 'new').league_level, 1);
 }
 
 function testNoShowRemovalThreshold() {
@@ -201,16 +151,12 @@ function testMessageSplit() {
 
 function testLeagueNamesAndTitles() {
   assert.strictEqual(LEAGUE_LAUNCH_DATE, '2026-06-29');
-  assert.strictEqual(LEAGUE_NAMES[1], 'League Tism');
-  assert.strictEqual(LEAGUE_NAMES[2], 'League Mid');
-  assert.strictEqual(LEAGUE_NAMES[3], 'League Dunce');
+  assert.strictEqual(LEAGUE_NAMES[1], 'MapTap League');
 
   const titleLines = formatTitleTracker({
-    1: [{ username: 'A', titles: 2 }],
-    2: [{ username: 'B', titles: 1 }],
-    3: [{ username: 'C', titles: 1 }]
+    1: [{ username: 'A', titles: 2 }]
   });
-  assert(titleLines.includes('League Tism: A x2'));
+  assert(titleLines.includes('MapTap League: A x2'));
 
   const message = formatLeagueUpdate({
     dateStr: '2026-06-01',
@@ -239,50 +185,34 @@ function testLeagueNamesAndTitles() {
     schedule: []
   });
   assert(message.includes('**Titles**'));
-  assert(message.includes('League Tism: A x2'));
+  assert(message.includes('MapTap League: A x2'));
   assert(message.includes('8,123 scored | A'));
   assert(message.includes('1,600 scored | League Average'));
-}
-
-function testLeagueReminderMessage() {
-  const message = formatLeagueReminder('2026-07-04', [
-    { league_level: 1, user_id: '111', username: 'A' },
-    { league_level: 3, user_id: '333', username: 'C' }
-  ]);
-  assert(message.includes('**MapTap League Reminder - 2026-07-04**'));
-  assert(message.includes('League Tism: <@111>'));
-  assert(message.includes('League Dunce: <@333>'));
-  assert.strictEqual(formatLeagueReminder('2026-07-04', []), null);
 }
 
 function testSeasonAwardsPanel() {
   const standings = {
     1: [
       { user_id: 'tism', username: 'Tism Champ', points: 20, wins: 6, point_diff: 100, total_score: 8000, seed_average: 800 },
-      { user_id: 'tism-low', username: 'Tism Low', points: 6, wins: 2, point_diff: -20, total_score: 7000, seed_average: 700 }
-    ],
-    2: [
-      { user_id: 'mid', username: 'Mid Champ', points: 21, wins: 7, point_diff: 200, total_score: 7600, seed_average: 760 },
-      { user_id: 'israel', username: 'Right Day Merchant', points: 15, wins: 5, point_diff: -250, total_score: 6100, seed_average: 610 }
-    ],
-    3: [
-      { user_id: 'dunce', username: 'Dunce Champ', points: 18, wins: 6, point_diff: 300, total_score: 8100, seed_average: 810 },
-      { user_id: 'chosen', username: 'Chosen', points: 0, wins: 0, point_diff: -500, total_score: 3000, seed_average: 300 }
+      { user_id: 'israel', username: 'Right Day Merchant', points: 15, wins: 5, point_diff: -250, total_score: 6100, seed_average: 610 },
+      { user_id: 'tism-low', username: 'Tism Low', points: 6, wins: 2, point_diff: -20, total_score: 7000, seed_average: 700 },
+      { user_id: 'chosen', username: 'Chosen', points: 0, wins: 0, point_diff: -500, total_score: 3000, seed_average: 300 },
+      { user_id: 'scored', username: 'Scored Champ', points: 18, wins: 6, point_diff: 300, total_score: 8100, seed_average: 810 }
     ]
   };
   const awards = buildSeasonAwards(standings, { season_number: 1 });
   assert.strictEqual(awards.leagueWinners[0].winner.username, 'Tism Champ');
   assert.strictEqual(awards.chosenOne.username, 'Chosen');
-  assert.strictEqual(awards.mostScored.username, 'Dunce Champ');
+  assert.strictEqual(awards.mostScored.username, 'Scored Champ');
   assert.strictEqual(awards.israelAward.username, 'Right Day Merchant');
 
   const panel = formatSeasonAwardsPanel(awards);
   assert(panel.includes('**Season 1 Special Awards**'));
-  assert(panel.includes('League Tism: <@tism>'));
+  assert(panel.includes('MapTap League: <@tism>'));
   assert(panel.includes('**The Chosen One**: <@chosen>'));
-  assert(panel.includes('**Most Points Scored**: <@dunce> - 8,100 scored'));
+  assert(panel.includes('**Most Points Scored**: <@scored> - 8,100 scored'));
   assert(panel.includes('**Israel Award**: <@israel> - 5 wins, -250 diff, 6,100 scored'));
-  assert.deepStrictEqual(seasonAwardUserIds(awards), ['tism', 'mid', 'dunce', 'chosen', 'israel']);
+  assert.deepStrictEqual(seasonAwardUserIds(awards), ['tism', 'chosen', 'scored', 'israel']);
 }
 
 function testLiveAverageResolverExport() {
@@ -358,7 +288,7 @@ function testLeagueSections() {
   assert(secondary.includes('**MapTap Leagues**'));
   assert(secondary.includes('Season 3 — Matchups for Day 4 of 10 (2026-07-18)'));
   assert(secondary.includes('**Titles**'));
-  assert(secondary.includes('League Tism: A x2'));
+  assert(secondary.includes('MapTap League: A x2'));
   assert(secondary.includes('**Schedule - 2026-07-18**'));
   assert(secondary.includes('A vs League Average'));
   assert(!secondary.includes('**Results**'));
@@ -474,11 +404,9 @@ testLeagueExclusions();
 testScheduleGeneration();
 testResultsAndStandings();
 testPromotionRelegation();
-testOneTimeExpansionPromotion();
 testNoShowRemovalThreshold();
 testMessageSplit();
 testLeagueNamesAndTitles();
-testLeagueReminderMessage();
 testSeasonAwardsPanel();
 testLiveAverageResolverExport();
 testAssignRoundIndices();

@@ -1,15 +1,13 @@
 const SEASON_LENGTH_DAYS = 10;
 const LEAGUE_LAUNCH_DATE = '2026-06-29';
+const LEAGUE_LEVELS = [1];
 const LEAGUE_NAMES = {
-  1: 'League Tism',
-  2: 'League Mid',
-  3: 'League Dunce'
+  1: 'MapTap League'
 };
 const AVERAGE_OPPONENT = 'AVERAGE';
 const WIN_REACTION = '🇼';
 const LOSS_REACTION = '🇱';
 const NO_SHOW_REMOVAL_THRESHOLD = 7;
-const ONE_TIME_EXPANSION_SEASON_NUMBER = 3;
 const EXCLUDED_LEAGUE_USER_IDS = new Set([
   '175759734996074497', // pancake_guys
   '215273003888541696', // Djimmy / djimmy23
@@ -31,6 +29,17 @@ function dateDiff(a, b) {
   const [ya, ma, da] = a.split('-').map(Number);
   const [yb, mb, db] = b.split('-').map(Number);
   return Math.round((Date.UTC(yb, mb - 1, db) - Date.UTC(ya, ma - 1, da)) / 86400000);
+}
+
+function todayNewYork() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date());
+  const byType = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
 }
 
 function seasonDayNumber(season, dateStr) {
@@ -66,18 +75,12 @@ function buildPlayerAverages(scores, startDate) {
 }
 
 function seedInitialMemberships(players) {
-  const eligible = players
-    .filter(player => player.last30_games >= 10)
-    .sort((a, b) => b.seed_average - a.seed_average || a.username.localeCompare(b.username));
-  const elite = new Set(eligible.slice(0, 5).map(player => player.user_id));
-  const middle = new Set(eligible.slice(5, 10).map(player => player.user_id));
-
   return players
     .slice()
     .sort((a, b) => b.seed_average - a.seed_average || a.username.localeCompare(b.username))
     .map(player => ({
       ...player,
-      league_level: elite.has(player.user_id) ? 1 : middle.has(player.user_id) ? 2 : 3
+      league_level: 1
     }));
 }
 
@@ -92,56 +95,17 @@ function rankStandings(rows) {
 }
 
 function flattenStandings(standings) {
-  return [1, 2, 3].flatMap(level => standings[level] || []);
+  return LEAGUE_LEVELS.flatMap(level => standings[level] || []);
 }
 
-function rankedEligible(standingsByLeague, level, next) {
-  return rankStandings(standingsByLeague[level] || [])
-    .filter(row => next.has(row.user_id));
-}
-
-function applyNormalPromotionRelegation(next, standingsByLeague) {
-  for (const level of [1, 2]) {
-    const upper = rankedEligible(standingsByLeague, level, next);
-    const lower = rankedEligible(standingsByLeague, level + 1, next);
-    const relegated = upper[upper.length - 1];
-    const promoted = lower[0];
-    if (!relegated || !promoted || relegated.user_id === promoted.user_id) continue;
-    next.get(relegated.user_id).league_level = level + 1;
-    next.get(promoted.user_id).league_level = level;
-  }
-}
-
-function applyOneTimeExpansionPromotion(next, standingsByLeague) {
-  const tism = rankedEligible(standingsByLeague, 1, next);
-  const mid = rankedEligible(standingsByLeague, 2, next);
-  const dunce = rankedEligible(standingsByLeague, 3, next);
-
-  const tismRelegated = tism[tism.length - 1];
-  if (tismRelegated) next.get(tismRelegated.user_id).league_level = 2;
-  const midRelegated = mid[mid.length - 1];
-  if (midRelegated) next.get(midRelegated.user_id).league_level = 3;
-
-  for (const promoted of mid.slice(0, 2)) {
-    if (promoted.user_id !== tismRelegated?.user_id) next.get(promoted.user_id).league_level = 1;
-  }
-
-  for (const promoted of dunce.slice(0, 3)) {
-    next.get(promoted.user_id).league_level = 2;
-  }
-}
-
-function applyPromotionRelegation(memberships, standingsByLeague, newPlayers, options = {}) {
+function applyPromotionRelegation(memberships, standingsByLeague, newPlayers) {
   const next = new Map(memberships.map(member => [member.user_id, { ...member }]));
 
-  if (options.oneTimeExpansion) applyOneTimeExpansionPromotion(next, standingsByLeague);
-  else applyNormalPromotionRelegation(next, standingsByLeague);
-
   for (const player of newPlayers) {
-    if (!next.has(player.user_id)) next.set(player.user_id, { ...player, league_level: 3 });
+    if (!next.has(player.user_id)) next.set(player.user_id, { ...player, league_level: 1 });
   }
 
-  return [...next.values()];
+  return [...next.values()].map(member => ({ ...member, league_level: 1 }));
 }
 
 function generateRoundRobinRounds(members) {
@@ -331,12 +295,11 @@ async function setupLeagueDB(pool) {
     CREATE TABLE IF NOT EXISTS league_state (
       id                         INTEGER PRIMARY KEY DEFAULT 1,
       last_finalized_date        TEXT,
-      last_league_post_date      TEXT,
-      last_league_reminder_date  TEXT
+      last_league_post_date      TEXT
     )
   `);
-  await pool.query('ALTER TABLE league_state ADD COLUMN IF NOT EXISTS last_league_reminder_date TEXT');
   await pool.query('INSERT INTO league_state (id) VALUES (1) ON CONFLICT DO NOTHING');
+  await normalizeActiveSingleLeagueSeasons(pool);
   console.log('League DB ready');
 }
 
@@ -392,12 +355,21 @@ async function insertSeason(pool, seasonNumber, startDate, memberships) {
     );
   }
 
-  const schedule = generateSeasonSchedule(memberships, startDate, season.id);
+  await insertScheduleRows(pool, generateSeasonSchedule(memberships, startDate, season.id));
+
+  console.log(`League season ${seasonNumber} ready (${startDate} to ${endDate})`);
+  return season;
+}
+
+async function insertScheduleRows(pool, schedule) {
   for (const matchup of schedule) {
     await pool.query(
       `INSERT INTO league_matchups (season_id, date_str, league_level, user_id, opponent_user_id, opponent_type)
        VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (season_id, date_str, user_id) DO NOTHING`,
+       ON CONFLICT (season_id, date_str, user_id) DO UPDATE SET
+         league_level = EXCLUDED.league_level,
+         opponent_user_id = EXCLUDED.opponent_user_id,
+         opponent_type = EXCLUDED.opponent_type`,
       [
         matchup.season_id,
         matchup.date_str,
@@ -408,9 +380,60 @@ async function insertSeason(pool, seasonNumber, startDate, memberships) {
       ]
     );
   }
+}
 
-  console.log(`League season ${seasonNumber} ready (${startDate} to ${endDate})`);
-  return season;
+async function normalizeActiveSingleLeagueSeasons(pool, dateStr = todayNewYork()) {
+  const { rows: seasons } = await pool.query(
+    `SELECT *
+     FROM league_seasons
+     WHERE status <> 'complete'
+       AND end_date >= $1
+     ORDER BY start_date`,
+    [dateStr]
+  );
+
+  for (const season of seasons) {
+    const scheduleStart = compareDate(season.start_date, dateStr) > 0 ? season.start_date : dateStr;
+    const { rows: checks } = await pool.query(
+      `SELECT
+         EXISTS (
+           SELECT 1 FROM league_memberships
+           WHERE season_id = $1 AND league_level <> 1
+         ) AS old_memberships,
+         EXISTS (
+           SELECT 1 FROM league_matchups
+           WHERE season_id = $1 AND date_str >= $2 AND league_level <> 1
+         ) AS old_matchups`,
+      [season.id, scheduleStart]
+    );
+    const needsNormalization = checks[0]?.old_memberships || checks[0]?.old_matchups;
+    if (!needsNormalization) continue;
+
+    await pool.query('BEGIN');
+    try {
+      await pool.query('UPDATE league_memberships SET league_level = 1 WHERE season_id = $1', [season.id]);
+      await pool.query('UPDATE league_results SET league_level = 1 WHERE season_id = $1 AND date_str < $2', [season.id, scheduleStart]);
+      await pool.query('UPDATE league_matchups SET league_level = 1 WHERE season_id = $1 AND date_str < $2', [season.id, scheduleStart]);
+      await pool.query('DELETE FROM league_results WHERE season_id = $1 AND date_str >= $2', [season.id, scheduleStart]);
+      await pool.query('DELETE FROM league_matchups WHERE season_id = $1 AND date_str >= $2', [season.id, scheduleStart]);
+
+      const { rows: members } = await pool.query(
+        `SELECT user_id, username, league_level, seed_average::float AS seed_average
+         FROM league_memberships
+         WHERE season_id = $1
+         ORDER BY user_id`,
+        [season.id]
+      );
+      const schedule = generateSeasonSchedule(members, season.start_date, season.id)
+        .filter(matchup => compareDate(matchup.date_str, scheduleStart) >= 0);
+      await insertScheduleRows(pool, schedule);
+      await pool.query('COMMIT');
+      console.log(`Normalized league season ${season.season_number} into one league from ${scheduleStart}`);
+    } catch (err) {
+      await pool.query('ROLLBACK');
+      throw err;
+    }
+  }
 }
 
 async function getLeagueAverageRows(pool, seasonId) {
@@ -484,7 +507,7 @@ async function buildStandings(pool, seasonId, options = {}) {
 
 async function recordLeagueTitles(pool, season) {
   const standings = await buildStandings(pool, season.id);
-  for (const level of [1, 2, 3]) {
+  for (const level of LEAGUE_LEVELS) {
     const champion = standings[level]?.[0];
     if (!champion) continue;
     await pool.query(
@@ -565,9 +588,7 @@ async function createNextSeason(pool, startDate, previousSeason) {
   const known = new Set(previousMembers.map(member => member.user_id));
   const newPlayers = players.filter(player => !known.has(player.user_id));
   const eligiblePreviousMembers = previousMembers.filter(member => !noShowRemovedIds.has(member.user_id));
-  const nextMemberships = applyPromotionRelegation(eligiblePreviousMembers, standings, newPlayers, {
-    oneTimeExpansion: previousSeason.season_number === ONE_TIME_EXPANSION_SEASON_NUMBER
-  });
+  const nextMemberships = applyPromotionRelegation(eligiblePreviousMembers, standings, newPlayers);
 
   const latestByUser = new Map(players.map(player => [player.user_id, player]));
   for (const member of nextMemberships) {
@@ -1007,30 +1028,6 @@ async function getScheduleForDate(pool, dateStr) {
   return { season, schedule: rows };
 }
 
-async function getLeagueReminderTargets(pool, dateStr) {
-  const season = await ensureLeagueSeasonForDate(pool, dateStr);
-  if (!season) return { season: null, targets: [] };
-
-  const { rows } = await pool.query(
-    `SELECT DISTINCT
-       lm.league_level,
-       lm.user_id,
-       m.username
-     FROM league_matchups lm
-     JOIN league_memberships m
-       ON m.season_id = lm.season_id AND m.user_id = lm.user_id
-     LEFT JOIN scores s
-       ON s.user_id = lm.user_id AND s.date_str = lm.date_str
-     WHERE lm.season_id = $1
-       AND lm.date_str = $2
-       AND s.user_id IS NULL
-     ORDER BY lm.league_level, m.username`,
-    [season.id, dateStr]
-  );
-
-  return { season, targets: rows };
-}
-
 function formatPointDiff(value) {
   const n = Number(value || 0);
   const rounded = Math.round(n * 10) / 10;
@@ -1053,12 +1050,15 @@ function formatAwardWinner(row) {
 }
 
 function buildSeasonAwards(standings, season = {}) {
-  const allPlayers = flattenStandings(standings);
-  const leagueWinners = [1, 2, 3]
-    .map(level => ({ league_level: level, winner: standings[level]?.[0] || null }))
+  const rankedStandings = Object.fromEntries(
+    LEAGUE_LEVELS.map(level => [level, rankStandings(standings[level] || [])])
+  );
+  const allPlayers = flattenStandings(rankedStandings);
+  const leagueWinners = LEAGUE_LEVELS
+    .map(level => ({ league_level: level, winner: rankedStandings[level]?.[0] || null }))
     .filter(row => row.winner);
-  const dunceTable = standings[3] || [];
-  const chosenOne = dunceTable[dunceTable.length - 1] || null;
+  const leagueTable = rankedStandings[1] || [];
+  const chosenOne = leagueTable[leagueTable.length - 1] || null;
   const mostScored = allPlayers
     .slice()
     .sort((a, b) =>
@@ -1103,7 +1103,7 @@ function buildSeasonAwards(standings, season = {}) {
 
 function formatTitleTracker(titles) {
   const lines = [];
-  for (const level of [1, 2, 3]) {
+  for (const level of LEAGUE_LEVELS) {
     const leagueTitles = titles[level] || [];
     if (!leagueTitles.length) continue;
     const leaders = leagueTitles
@@ -1113,22 +1113,6 @@ function formatTitleTracker(titles) {
     lines.push(`${LEAGUE_NAMES[level]}: ${leaders}`);
   }
   return lines;
-}
-
-function formatLeagueReminder(dateStr, targets) {
-  if (!targets.length) return null;
-  const lines = [
-    `**MapTap League Reminder - ${dateStr}**`,
-    '9 PM check-in. Still need scores from:'
-  ];
-
-  for (const level of [1, 2, 3]) {
-    const leagueTargets = targets.filter(row => row.league_level === level);
-    if (!leagueTargets.length) continue;
-    lines.push(`${LEAGUE_NAMES[level]}: ${leagueTargets.map(row => `<@${row.user_id}>`).join(' ')}`);
-  }
-
-  return lines.join('\n');
 }
 
 function seasonAwardUserIds(awards) {
@@ -1158,7 +1142,7 @@ function formatSeasonAwardsPanel(awards) {
   }
 
   if (awards.chosenOne) {
-    lines.push('', `**The Chosen One**: ${formatAwardWinner(awards.chosenOne)} (${LEAGUE_NAMES[3]} last place)`);
+    lines.push('', `**The Chosen One**: ${formatAwardWinner(awards.chosenOne)} (${LEAGUE_NAMES[1]} last place)`);
   }
 
   if (awards.mostScored) {
@@ -1200,7 +1184,7 @@ function formatLeagueSections({
 
   primary.push('**Results**');
   const resultsHeaderIndex = primary.length - 1;
-  for (const level of [1, 2, 3]) {
+  for (const level of LEAGUE_LEVELS) {
     const leagueResults = results.filter(row => row.league_level === level);
     if (!leagueResults.length) continue;
     primary.push(`__${LEAGUE_NAMES[level]}__`);
@@ -1223,7 +1207,7 @@ function formatLeagueSections({
   }
 
   primary.push('', '**Tables**');
-  for (const level of [1, 2, 3]) {
+  for (const level of LEAGUE_LEVELS) {
     const table = standings[level] || [];
     if (!table.length) continue;
     primary.push(`__${LEAGUE_NAMES[level]}__`);
@@ -1250,7 +1234,7 @@ function formatLeagueSections({
     secondary.push('**Still to play**');
   }
   const scheduleHeaderIndex = secondary.length - 1;
-  for (const level of [1, 2, 3]) {
+  for (const level of LEAGUE_LEVELS) {
     const leagueSchedule = schedule.filter(row => row.league_level === level);
     if (!leagueSchedule.length) continue;
     secondary.push(`__${LEAGUE_NAMES[level]}__`);
@@ -1387,12 +1371,10 @@ module.exports = {
   finalizeLeagueDate,
   formatLeagueSections,
   formatLeagueUpdate,
-  formatLeagueReminder,
   formatSeasonAwardsPanel,
   formatTitleTracker,
   generateSeasonSchedule,
   seasonDayNumber,
-  getLeagueReminderTargets,
   getLeagueTitleTracker,
   rankStandings,
   recordNoShowExclusions,
