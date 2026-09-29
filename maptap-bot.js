@@ -27,9 +27,15 @@ const TOKEN               = process.env.DISCORD_TOKEN;
 const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID;
 const DATABASE_URL        = process.env.DATABASE_URL;
 const GUILD_ID            = process.env.GUILD_ID;
+const BOT_SHUTDOWN        = true;
 const RUSTY_USER_ID       = '449399625389047829';
 const RUSTY_WARNING_KEY   = 'rusty_fair_play_warning_v1';
 const RUSTY_WARNING_TEXT  = 'WARNING - YOU HAVE BEEN REPORTED FOR VIOLATING FAIR PLAY. If you would like to continue to play with your "girlfriend\'s" help, please report to league authorities. Current proposal: Minus 5 for help + Minus 5 per daily guess in the Middle East. Thank you for your cooperation on this matter';
+
+if (BOT_SHUTDOWN) {
+  console.log('MapTap bot is intentionally shut down; exiting before Discord login.');
+  process.exit(0);
+}
 
 if (!TOKEN)        throw new Error('Missing DISCORD_TOKEN');
 if (!ANNOUNCE_CHANNEL_ID) throw new Error('Missing ANNOUNCE_CHANNEL_ID');
